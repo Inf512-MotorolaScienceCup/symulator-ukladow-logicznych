@@ -5,12 +5,19 @@ Celem projektu jest zaprogramowanie symulatora układów logicznych, który móg
 ### Struktura projektu
 ```bash
 .
-├─ 📁 build (miejsce gdzie zostaną przygotowane pliki do kompilacji)
+├─ 📁 out (miejsce gdzie zostaną przygotowane pliki do kompilacji, etc)
 ├─ 📁 doc (dokumentacja)
 ├─ 📁 etc (różne potrzebne pliki, m.in. pliki testowe)
 ├─ 📁 include (pliki z nagłówkami)
+│  ├─ 📄 CMakeLists.txt
+│  └─ 📄 [*.h]
+├─ 📁 lib (zewnętrzne biblioteki)
+│  ├─ 📄 CMakeLists.txt
+│  └─ 📁 raylib (biblioteka graficzna)
 ├─ 📁 src (pliki z kodem źródłowym)
+│  ├─ 📄 CMakeLists.txt
+│  └─ 📄 [*.cpp]
 ├─ 📄 .gitignore
-├─ 📄 CMakeList.txt
+├─ 📄 CMakeLists.txt
 └─ 📄 README.md
 ```
