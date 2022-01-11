@@ -1,5 +1,5 @@
 #*# ignore bin directory
-bin
+out
 
 #*# ignore c++ stuff
 # Prerequisites
@@ -41,3 +41,7 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+
+#*# ignore visual studio stuff
+.vs 
+CMakeSettings.json
