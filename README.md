@@ -5,11 +5,10 @@ Celem projektu jest zaprogramowanie symulatora układów logicznych, który móg
 ### Struktura projektu
 ```bash
 .
-├─ 📁 bin (miejsce gdzie trafia skompilowany program)
+├─ 📁 build (miejsce gdzie zostaną przygotowane pliki do kompilacji)
 ├─ 📁 doc (dokumentacja)
 ├─ 📁 etc (różne potrzebne pliki, m.in. pliki testowe)
 ├─ 📁 include (pliki z nagłówkami)
-├─ 📁 lib (dodatkowe zewnętrzne biblioteki)
 ├─ 📁 src (pliki z kodem źródłowym)
 ├─ 📄 .gitignore
 ├─ 📄 CMakeList.txt
