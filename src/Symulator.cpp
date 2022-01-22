@@ -102,7 +102,7 @@ int main()
         {
             // TODO: Draw LOGO screen here!
             DrawText("LOGO SCREEN", 20, 20, 40, LIGHTGRAY);
-            DrawText("WAIT for 2 SECONDS...", 290, 220, 20, GRAY);
+            DrawText("Oliwier for 2 SECONDS...", 290, 220, 20, GRAY);
 
         } break;
         case TITLE:
