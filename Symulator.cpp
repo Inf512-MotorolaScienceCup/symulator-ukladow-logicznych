@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "Symulator.h"
 #include "raylib.h"
 
@@ -18,6 +20,10 @@ Symulator::~Symulator() {
         delete out;
     }
     outputs.clear();
+    for (auto &connection : connections) {
+        delete connection;
+    }
+    connections.clear();
 }
 
 void Symulator::DrawPanel() {
@@ -34,32 +40,46 @@ void Symulator::DrawGate(Gate* gate) {
     float y = gate->rect.y;
 
     DrawCircle(x + 45, y + 15, 15, BLUE);
-    DrawRectangle(x + 15, y + 0, 30, 30, BLUE);
-    DrawLineEx({x + 5, y + 5}, {x + 15, y + 5}, 3.0, BLUE);
-    DrawLineEx({x + 5, y + 25}, {x + 15, y + 25}, 3.0, BLUE);
+    DrawRectangle(x + 15, y, 30, 30, BLUE);
+
+    if (gate->inConn.size() == 1) {
+        DrawLineEx({x + 5, y + 15}, {x + 15, y + 15}, 3.0, BLUE);
+        DrawCircle(x + 5, y + 15, 5, gate->inConn[0].value ? RED : GRAY);
+    } else {
+        DrawLineEx({x + 5, y + 5}, {x + 15, y + 5}, 3.0, BLUE);
+        DrawLineEx({x + 5, y + 25}, {x + 15, y + 25}, 3.0, BLUE);
+        DrawCircle(x + 5, y + 5, 5, gate->inConn[0].value ? RED : GRAY);
+        DrawCircle(x + 5, y + 25, 5, gate->inConn[1].value ? RED : GRAY);
+    }
+
     DrawLineEx({x + 60, y + 15}, {x + 70, y + 15}, 3.0, BLUE);
-    DrawCircle(x + 5, y + 5, 5, BLUE);
-    DrawCircle(x + 5, y + 25, 5, BLUE);
-    DrawCircle(x + 70, y + 15, 5, BLUE);
+    DrawCircle(x + 70, y + 15, 5, gate->outConn.value ? RED : GRAY);
     DrawText(gate->text.c_str(), x + 20, y + 10, 15, RAYWHITE);
+
+    if (gate->collide) {
+        DrawLine(x + 15, y, x + 55, y + 35, RED);
+        DrawLine(x + 15, y + 35, x + 55, y, RED);
+    }
 }
 
 void Symulator::DrawInput(Input *in) {
-    // float x = pos * HEIGHT + 5;
-    // float y = in->pos * (Input::HEIGHT + 5);
-    DrawRectangle(0, in->y + 40, 20, 40, RED);
-    DrawTriangle({20, in->y + 40}, {20, in->y + 80}, {40, in->y + 60}, RED);
-    DrawCircle(45, in->y + 60, 5, RED);
-    DrawText(TextFormat("%d", in->value), 5, in->y + 50, 20, RAYWHITE);
+    Color color = in->conn.value ? RED : GRAY;
+    DrawRectangle(0, in->y, 20, 40, color);
+    DrawTriangle({20, in->y}, {20, in->y + 40}, {40, in->y + 20}, color);
+    DrawCircle(45, in->y + 20, 5, color);
+    DrawText(TextFormat("%d", in->conn.value), 5, in->y + 10, 20, RAYWHITE);
+
+    // DrawRectangleLines(40, in->y + 15, 10, 10, PINK);
 }
 
 void Symulator::DrawOutput(Output *out) {
-    // float x = 0;
-    float y = out->pos * (Output::HEIGHT + 5);
-    DrawRectangle(SCREEN_WIDTH - 20, y + 40, 20, 40, RED);
-    DrawTriangle({SCREEN_WIDTH - 20, y + 40}, {SCREEN_WIDTH - 40, y + 60}, {SCREEN_WIDTH - 20, y + 80}, RED);
-    DrawCircle(SCREEN_WIDTH - 45, y + 60, 5, RED);
-    DrawText(TextFormat("%d", out->value), SCREEN_WIDTH - 20, y + 50, 20, RAYWHITE);
+    Color color = out->conn.value ? RED : GRAY;
+    DrawRectangle(SCREEN_WIDTH - 20, out->y, 20, 40, color);
+    DrawTriangle({SCREEN_WIDTH - 20, out->y}, {SCREEN_WIDTH - 40, out->y + 20}, {SCREEN_WIDTH - 20, out->y + 40}, color);
+    DrawCircle(SCREEN_WIDTH - 45, out->y + 20, 5, color);
+    DrawText(TextFormat("%d", out->conn.value), SCREEN_WIDTH - 20, out->y + 10, 20, RAYWHITE);
+
+    // DrawRectangleLines(SCREEN_WIDTH - 40 - 10, out->y + 15, 10, 10, PINK);
 }
 
 void Symulator::DrawGates() {
@@ -80,10 +100,23 @@ void Symulator::DrawOutputs() {
     }
 }
 
+void Symulator::DrawConnections() {
+    int i = 1;
+    for (auto &con : connections) {
+        float y1 = con->start->pos.y;
+        float y2 = con->end->pos.y;
+        float w1 = (con->end->pos.x - con->start->pos.x) * i++ / 10;
+        DrawLineEx({con->start->pos.x, y1}, {con->start->pos.x + w1, y1}, 3.0, RAYWHITE);
+        DrawLineEx({con->start->pos.x + w1, y2}, {con->end->pos.x, y2 }, 3.0, RAYWHITE);
+        DrawLineEx({con->start->pos.x + w1, y1}, {con->start->pos.x + w1, y2}, 3.0, RAYWHITE);
+    }
+}
+
 void Symulator::CreateGateMenu() {
-    gateMenu.push_back(new Gate(5, 5, "AND"));
-    gateMenu.push_back(new Gate(5 + Gate::WIDTH + 20, 5, "OR"));
-    gateMenu.push_back(new Gate(5 + 2 * (Gate::WIDTH + 20), 5, "XOR"));
+    gateMenu.push_back(new Gate(5, 5, "AND", Gate::Type::AND));
+    gateMenu.push_back(new Gate(5 + Gate::WIDTH + 20, 5, "OR", Gate::Type::OR));
+    gateMenu.push_back(new Gate(5 + 2 * (Gate::WIDTH + 20), 5, "XOR", Gate::Type::XOR));
+    gateMenu.push_back(new Gate(5 + 3 * (Gate::WIDTH + 20), 5, "NOT", Gate::Type::NOT, true));
 }
 
 void Symulator::CreateInputs() {
@@ -103,6 +136,41 @@ void Symulator::Log(const char* text) {
 void Symulator::DrawGateMenu() {
     for (auto& gate : gateMenu) {
         DrawGate(gate);
+    }
+}
+
+void Symulator::AddConnection(Line* line) {
+}
+
+Connector* Symulator::GetNextConnector(Connector* conn) {
+    if (!conn) return nullptr;
+
+    for (auto& line : connections) {
+        if (line->start == conn)
+            return line->end;
+        if (line->end == conn)
+            return line->start;
+    }
+    return nullptr;
+}
+
+void Symulator::UpdateConnections() {
+    for (auto& in : inputs) {
+        Connector* next = GetNextConnector(&in->conn);
+        bool value = in->conn.value;
+        while (next) {
+            if (next->type == Connector::Type::IN) {
+                next->value = value;
+                if (next->gate) {
+                    next->gate->calc();
+                    next = &next->gate->outConn;
+                    value = next->gate->outConn.value;
+                } else {
+                    next = nullptr;
+                }
+            }
+            next = GetNextConnector(next);
+        }
     }
 }
 
@@ -144,56 +212,153 @@ Input* Symulator::CheckInputs(const Vector2& pos) {
     return nullptr;
 }
 
-void Symulator::Update() {
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        Vector2 pos = GetMousePosition();
-
-        Input* in = CheckInputs(pos);
-        if (in) {
-            in->value = !in->value;
+Connector* Symulator::CheckGateEndpoints(Gate *gate, const Vector2 &pos) {
+    for (auto& in : gate->inConn) {
+        if (CheckCollisionPointRec(pos, {in.pos.x - 5, in.pos.y - 5, 10, 10})) {
+            return &in;
         }
     }
+    if (CheckCollisionPointRec(pos, {gate->outConn.pos.x - 5, gate->outConn.pos.y - 5, 10, 10})) {
+        return &gate->outConn;
+    }
+    return nullptr;
+}
 
-    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-        Vector2 pos = GetMousePosition();
+Connector* Symulator::CheckGatesEndpoints(const Vector2 &pos) {
+    for (auto &gate : gates) {
+        Connector *endPos = CheckGateEndpoints(gate, pos);
+        if (endPos) return endPos;
+    }
+    return nullptr;
+}
 
-        Log(TextFormat("Mouse Pressed x:%f y:%f", pos.x, pos.y));
+Connector* Symulator::CheckInputEndpoints(const Vector2 &pos) {
+    float x = 40;
+    for (auto &in : inputs) {
+        float y = in->y + 15;
+        if (CheckCollisionPointRec(pos, {x, y, 10, 10})) {
+            return &in->conn;
+        }
+    }
+    return nullptr;
+}
 
-        Gate *gate = CheckGateMenu(pos);
-        if (gate) {
-            movingGate = new Gate(gate);
-            gates.push_back(movingGate);
-            state = State::GATE_MOVING;
+Connector* Symulator::CheckOutputEndpoints(const Vector2 &pos) {
+    float x = SCREEN_WIDTH - 40 - 10;
+    for (auto& out : outputs) {
+        float y = out->y + 15;
+        if (CheckCollisionPointRec(pos, {x, y, 10, 10})) {
+            return &out->conn;
+        }
+    }
+    return nullptr;
+}
 
-            printf("%s %p\n", movingGate->text.c_str(), movingGate);
-        } else {
-            gate = CheckGates(pos);
+bool Symulator::GateCollide(Gate *gate) {
+    // With Gate Menu
+    if (CheckCollisionRecs(gate->rect, {0, 0, SCREEN_WIDTH, 40}))
+        return true;
+    // With Inputs
+    if (CheckCollisionRecs(gate->rect, {0, 40, 40, SCREEN_HEIGHT - 40}))
+        return true;
+    // With Outputs
+    if (CheckCollisionRecs(gate->rect, {SCREEN_WIDTH - 40, 40, 40, SCREEN_HEIGHT - 40}))
+        return true;
+    // With Menu
+    if (CheckCollisionRecs(gate->rect, {40, SCREEN_HEIGHT - 40, SCREEN_WIDTH - 2 * 40}))
+        return true;
+
+    for (auto& g : gates) {
+        if (g != gate) {
+            if (CheckCollisionRecs(g->rect, gate->rect))
+                return true;
+        }
+    }
+    return false;
+}
+
+void Symulator::Update() {
+    if (state == State::ACTIVE) {
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            Vector2 pos = GetMousePosition();
+
+            Input* in = CheckInputs(pos);
+            if (in) {
+                in->conn.value = !in->conn.value;
+            }
+        }
+
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            Vector2 pos = GetMousePosition();
+
+            Log(TextFormat("x:%.0f y:%.0f", pos.x, pos.y));
+
+            Gate *gate = CheckGateMenu(pos);
             if (gate) {
-                movingGate = gate;
+                movingGate = new Gate(gate);
+                gates.push_back(movingGate);
                 state = State::GATE_MOVING;
 
                 printf("%s %p\n", movingGate->text.c_str(), movingGate);
+            } else {
+                gate = CheckGates(pos);
+                if (gate) {
+                    lineStart = CheckGateEndpoints(gate, pos);
+                    if (lineStart) {
+                        state = State::LINE_DRAWING;
+
+                        printf("Line start\n");
+                    }
+                    else {
+                        movingGate = gate;
+                        state = State::GATE_MOVING;
+
+                        printf("%s %p\n", movingGate->text.c_str(), movingGate);
+                    }
+                }
             }
         }
-    }
-
-    if (state == State::GATE_MOVING) {
+    } else if (state == State::GATE_MOVING) {
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
             Vector2 delta = GetMouseDelta();
-            if (!movingGate) {
-                printf("NULL\n");
-                return;
-            }
             movingGate->rect.x += delta.x;
             movingGate->rect.y += delta.y;
-            // printf("NULL\n");
+            movingGate->outConn.pos.x += delta.x;
+            movingGate->outConn.pos.y += delta.y;
+            for (auto& in : movingGate->inConn) {
+                in.pos.x += delta.x;
+                in.pos.y += delta.y;
+            }
+            movingGate->collide = GateCollide(movingGate);
         } else {
+            if (movingGate->collide) {
+                gates.erase(std::remove(gates.begin(), gates.end(), movingGate), gates.end());
+                delete movingGate;
+            }
             state = State::ACTIVE;
             movingGate = nullptr;
 
             printf("Gate DROPPED\n");
         }
+    } else if (state == State::LINE_DRAWING) {
+        Vector2 pos = GetMousePosition();
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            DrawLineEx(lineStart->pos, pos, 3.0, RAYWHITE);
+        } else {
+            Connector* conn;
+            if ((conn = CheckInputEndpoints(pos)) != nullptr) {
+                connections.push_back(new Line(lineStart, conn));
+            } else if ((conn = CheckOutputEndpoints(pos)) != nullptr) {
+                connections.push_back(new Line(lineStart, conn));
+            } else if ((conn = CheckGatesEndpoints(pos)) != nullptr) {
+                connections.push_back(new Line(lineStart, conn));
+            }
+            state = State::ACTIVE;
+            printf("Line finished\n");
+        }
     }
+
+    UpdateConnections();
 }
 
 void Symulator::Draw() {
@@ -202,6 +367,7 @@ void Symulator::Draw() {
     ClearBackground(GetColor(0x052c46ff));
 
     DrawPanel();
+    DrawConnections();
     DrawInputs();
     DrawOutputs();
     DrawGates();
@@ -212,7 +378,7 @@ void Symulator::Draw() {
 
 int Symulator::MainLoop()
 {
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Symulator ukladow logicznych");
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Symulator");
     SetTargetFPS(60);
 
     CreateGateMenu();
@@ -231,6 +397,6 @@ int Symulator::MainLoop()
 }
 
 int main() {
-    Symulator symulator;
-    return symulator.MainLoop();
+    Symulator sym;
+    return sym.MainLoop();
 }
