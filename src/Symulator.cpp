@@ -287,6 +287,7 @@ void Symulator::Update() {
                 in->conn.value = !in->conn.value;
             }
         }
+<<<<<<< HEAD
 
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
             Vector2 pos = GetMousePosition();
@@ -317,6 +318,50 @@ void Symulator::Update() {
                     }
                 }
             }
+=======
+        //----------------------------------------------------------------------------------
+
+        // Draw
+        //----------------------------------------------------------------------------------
+        BeginDrawing();
+
+        ClearBackground(RAYWHITE);
+
+        switch (currentScreen)
+        {
+        case LOGO:
+        {
+            // TODO: Draw LOGO screen here!
+            DrawText("LOGO SCREEN", 20, 20, 40, LIGHTGRAY);
+            DrawText("Oliwier for 2 SECONDS...", 290, 220, 20, GRAY);
+
+        } break;
+        case TITLE:
+        {
+            // TODO: Draw TITLE screen here!
+            DrawRectangle(0, 0, screenWidth, screenHeight, GREEN);
+            DrawText("TITLE SCREEN", 20, 20, 40, DARKGREEN);
+            DrawText("PRESS ENTER or TAP to JUMP to GAMEPLAY SCREEN", 120, 220, 20, DARKGREEN);
+
+        } break;
+        case GAMEPLAY:
+        {
+            // TODO: Draw GAMEPLAY screen here!
+            DrawRectangle(0, 0, screenWidth, screenHeight, PURPLE);
+            DrawText("GAMEPLAY SCREEN", 20, 20, 40, MAROON);
+            DrawText("PRESS ENTER or TAP to JUMP to ENDING SCREEN", 130, 220, 20, MAROON);
+
+        } break;
+        case ENDING:
+        {
+            // TODO: Draw ENDING screen here!
+            DrawRectangle(0, 0, screenWidth, screenHeight, BLUE);
+            DrawText("ENDING SCREEN", 20, 20, 40, DARKBLUE);
+            DrawText("PRESS ENTER or TAP to RETURN to TITLE SCREEN", 120, 220, 20, DARKBLUE);
+
+        } break;
+        default: break;
+>>>>>>> 740d17975e7387bcd7ac9f74a8bf307568d16138
         }
     } else if (state == State::GATE_MOVING) {
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
