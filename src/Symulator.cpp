@@ -1,148 +1,99 @@
-// Symulator.cpp: definiuje punkt wejścia dla aplikacji.
-//
-
-#include "Symulator.h"
 #include "raylib.h"
+#include "Button.cpp"
+#include "InputBox.cpp"
 
-//------------------------------------------------------------------------------------------
-// Types and Structures Definition
-//------------------------------------------------------------------------------------------
-typedef enum GameScreen { LOGO = 0, TITLE, GAMEPLAY, ENDING } GameScreen;
+using namespace std;
 
-/*
-int DrawGate() {
-    DrawRectangle();
-    DrawCircle();
-    DrawLine();
-    DrawLine();
-    DrawLine();
-}
-*/
+bool btnNewProjClicked = false;
+//char name[InputBox] = "\0";
 
-int main()
+
+
+
+int main(void)
 {
-    // Initialization
-    //--------------------------------------------------------------------------------------
-    const int screenWidth = 800;
-    const int screenHeight = 450;
 
-    InitWindow(screenWidth, screenHeight, "raylib [core] example - basic screen manager");
+    const int x = GetScreenWidth();
+    const int y = GetScreenHeight();
 
-    GameScreen currentScreen = LOGO;
 
-    // TODO: Initialize all required variables and load all required data here!
 
-    int framesCounter = 0;          // Useful to count frames
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(x, y, "raylib [core] example - basic window");
+    MaximizeWindow();
+    ShowCursor();
 
-    SetTargetFPS(60);               // Set desired framerate (frames-per-second)
-                                    //--------------------------------------------------------------------------------------
+    SetTargetFPS(60);
 
-                                    // Main game loop
-    while (!WindowShouldClose())    // Detect window close button or ESC key
+    Color btn1Color = PURPLE;
+    Color btn2Color = PURPLE;
+    Color btn3Color = PURPLE;
+    //Font font = LoadFontEx("assets/Inter-Regular.ttf", 10, 0, 0);
+
+    
+
+    InputBox inputBox = InputBox(0.325f, 0.3f, 0.35f, 0.1f);
+
+
+    while (!WindowShouldClose())
     {
-        // Update
-        //----------------------------------------------------------------------------------
-        switch (currentScreen)
-        {
-        case LOGO:
-        {
-            // TODO: Update LOGO screen variables here!
 
-            framesCounter++;    // Count frames
+       
+        int width = GetScreenWidth();
+        int height = GetScreenHeight();
 
-                                // Wait for 2 seconds (120 frames) before jumping to TITLE screen
-            if (framesCounter > 120)
-            {
-                currentScreen = TITLE;
-            }
-        } break;
-        case TITLE:
-        {
-            // TODO: Update TITLE screen variables here!
-
-            // Press enter to change to GAMEPLAY screen
-            if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP))
-            {
-                currentScreen = GAMEPLAY;
-            }
-        } break;
-        case GAMEPLAY:
-        {
-            // TODO: Update GAMEPLAY screen variables here!
-
-            // Press enter to change to ENDING screen
-            if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP))
-            {
-                currentScreen = ENDING;
-            }
-        } break;
-        case ENDING:
-        {
-            // TODO: Update ENDING screen variables here!
-
-            // Press enter to return to TITLE screen
-            if (IsKeyPressed(KEY_ENTER) || IsGestureDetected(GESTURE_TAP))
-            {
-                currentScreen = TITLE;
-            }
-        } break;
-        default: break;
-        }
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
         BeginDrawing();
 
-        ClearBackground(RAYWHITE);
+        ClearBackground(Color{ 94, 88, 196,255 });
 
-        switch (currentScreen)
-        {
-        case LOGO:
-        {
-            // TODO: Draw LOGO screen here!
-            DrawText("LOGO SCREEN", 20, 20, 40, LIGHTGRAY);
-            DrawText("Oliwier for 2 SECONDS...", 290, 220, 20, GRAY);
 
-        } break;
-        case TITLE:
-        {
-            // TODO: Draw TITLE screen here!
-            DrawRectangle(0, 0, screenWidth, screenHeight, GREEN);
-            DrawText("TITLE SCREEN", 20, 20, 40, DARKGREEN);
-            DrawText("PRESS ENTER or TAP to JUMP to GAMEPLAY SCREEN", 120, 220, 20, DARKGREEN);
 
-        } break;
-        case GAMEPLAY:
-        {
-            // TODO: Draw GAMEPLAY screen here!
-            DrawRectangle(0, 0, screenWidth, screenHeight, PURPLE);
-            DrawText("GAMEPLAY SCREEN", 20, 20, 40, MAROON);
-            DrawText("PRESS ENTER or TAP to JUMP to ENDING SCREEN", 130, 220, 20, MAROON);
 
-        } break;
-        case ENDING:
-        {
-            // TODO: Draw ENDING screen here!
-            DrawRectangle(0, 0, screenWidth, screenHeight, BLUE);
-            DrawText("ENDING SCREEN", 20, 20, 40, DARKBLUE);
-            DrawText("PRESS ENTER or TAP to RETURN to TITLE SCREEN", 120, 220, 20, DARKBLUE);
 
-        } break;
-        default: break;
+        float textSize = width * 0.06;
+
+        if (!btnNewProjClicked) {
+
+            int textWidth = MeasureText("Symulator Bramek Logicznych", textSize);
+            DrawText("Symulator Bramek Logicznych", (width - textWidth) * 0.5f, height * 0.2f, textSize, WHITE);
+
+            Button button1 = Button(width * 0.4f, height * 0.45f, width * 0.2f, height * 0.08f, width, height, btn1Color, WHITE, "Stwórz nowy projekt");
+            btn1Color = button1.buttonHovered(GetMousePosition());
+            btnNewProjClicked = button1.buttonClicked(GetMousePosition(), btnNewProjClicked);
+
+            Button button2 = Button(width * 0.4f, height * 0.65f, width * 0.2f, height * 0.08f, width, height, btn2Color, WHITE, "Załaduj Projekt");
+            btn2Color = button2.buttonHovered(GetMousePosition());
+
         }
+        else if (btnNewProjClicked) {
+            Button button3 = Button(10, 10, width * 0.045f, height * 0.04f, width, height, btn3Color, WHITE, "<-");
+            btn3Color = button3.buttonHovered(GetMousePosition());
+            btnNewProjClicked = button3.buttonClicked(GetMousePosition(), btnNewProjClicked);
 
+
+            
+            inputBox.DrawInputBox();
+
+
+           
+
+
+
+
+
+
+
+
+        }
         EndDrawing();
-        //----------------------------------------------------------------------------------
+
+
+
     }
 
-    // De-Initialization
-    //--------------------------------------------------------------------------------------
 
-    // TODO: Unload all loaded data (textures, fonts, audio) here!
+    CloseWindow();
 
-    CloseWindow();        // Close window and OpenGL context
-                          //--------------------------------------------------------------------------------------
 
     return 0;
 }
