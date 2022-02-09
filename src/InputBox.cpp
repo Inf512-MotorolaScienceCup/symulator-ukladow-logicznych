@@ -16,11 +16,11 @@ private:
     int letterCount = 0;
 
     static const int maxInputChars = 20;
-    char input[maxInputChars] = "\0";
+    
 
     
 public:
-
+    char input[maxInputChars] = "\0";
 
 
     InputBox(float x_par, float y_par, float width_par, float height_par) {
