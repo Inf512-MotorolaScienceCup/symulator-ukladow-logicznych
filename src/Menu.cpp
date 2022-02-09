@@ -3,7 +3,7 @@
 #include "InputBox.cpp"
 #include "fstream"
 #include "string"
-#include "Symulator.h"
+
 
 
 
