@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 add_executable(${PROJECT_NAME} 
-  Symulator.cpp
-)
+  "Menu.cpp"
+  "InputBox.cpp"
+  "Button.cpp  "
+  "Symulator.cpp")
