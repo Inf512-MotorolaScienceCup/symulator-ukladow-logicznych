@@ -7,9 +7,7 @@ Celem projektu jest zaprogramowanie symulatora układów logicznych, który móg
 .
 ├─ 📁 out (miejsce gdzie zostaną przygotowane pliki do kompilacji, etc)
 ├─ 📁 doc (dokumentacja)
-├─ 📁 etc (różne potrzebne pliki, m.in. pliki testowe)
 ├─ 📁 include (pliki z nagłówkami)
-│  ├─ 📄 CMakeLists.txt
 │  └─ 📄 [*.h]
 ├─ 📁 lib (zewnętrzne biblioteki)
 │  ├─ 📄 CMakeLists.txt
