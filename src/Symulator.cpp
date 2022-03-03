@@ -9,36 +9,80 @@
 
 namespace sym {
 
-    bool IsInputComponent(Component* comp) {
-        return (comp->type == Component::Type::INPUT1 || comp->type == Component::Type::INPUT4 ||
-            comp->type == Component::Type::INPUT8);
-    }
+char Input::nextText = 'a';
+char InputBlock::nextText = 'A';
 
-    bool IsOutputComponent(Component* comp) {
-        return (comp->type == Component::Type::OUTPUT1);
-    }
+struct CompIdx {
+    int compIdx;
+    Connector::Type type;
+    int connIdx;
+};
 
-    Connector* GetNextConnector(std::vector<Line*>& connections, Connector* conn) {
-        if (!conn) return nullptr;
-
-        for (auto& line : connections) {
-            if (line->start == conn)
-                return line->end;
-            if (line->end == conn)
-                return line->start;
+CompIdx GetComponentIdx(std::vector<Line*>& connections, std::vector<Component*>& comps, Connector* conn) {
+    for (int i = 0; i < comps.size(); i++) {
+        for (int j = 0; j < comps[i]->outConns.size(); j++) {
+            if (&comps[i]->outConns[j] == conn)
+                return { i, Connector::Type::OUT, 0 };
         }
-        return nullptr;
+        for (int j = 0; j < comps[i]->inConns.size(); j++) {
+            if (&comps[i]->inConns[j] == conn)
+                return { i, Connector::Type::IN, j };
+        }
     }
+    return { -1, Connector::Type::IN, -1 };
+}
 
-    void UpdateConnections(std::vector<Line*>& connections, Connector* conn) {
-        if (!conn) return;
+bool IsInputComponent(Component *comp) {
+    return (comp->type == Component::Type::INPUT1 || comp->type == Component::Type::INPUT2 ||
+            comp->type == Component::Type::INPUT4 || comp->type == Component::Type::INPUT8);
+}
 
-        bool value = conn->value;
-        Connector* next = GetNextConnector(connections, conn);
+bool IsOutputComponent(Component *comp) {
+    return (comp->type == Component::Type::OUTPUT1 || comp->type == Component::Type::OUTPUT2 ||
+            comp->type == Component::Type::OUTPUT4 || comp->type == Component::Type::OUTPUT8);
+}
+
+std::vector<Connector*> GetNextConnector(std::vector<Line*>& connections, Connector* conn) {
+    if (!conn) return {};
+
+    std::vector<Connector*> nextList;
+    for (auto& line : connections) {
+        if (conn->type == Connector::Type::IN) {
+            if (line->end == conn) {
+                nextList.push_back(line->start);
+                // Only one connection to input allowed
+                break;
+            }
+        } else {
+            if (line->start == conn)
+                nextList.push_back(line->end);
+        }
+    }
+    return nextList;
+}
+
+void AddConnection(std::vector<Line *> &connections, Connector *conn1, Connector *conn2) {
+    if (conn1 == conn2) return;
+    if (conn1->type == conn2->type) {
+        printf("Error: Connectors with the same type:%d\n", conn2->type);
+        return;
+    }
+    if (conn1->type == Connector::Type::OUT)
+        connections.push_back(new Line(conn1, conn2));
+    else
+        connections.push_back(new Line(conn2, conn1));
+}
+
+void UpdateConnections(std::vector<Line *> &connections, Connector *conn) {
+    if (!conn) return;
+
+    bool value = conn->value;
+    std::vector<Connector*> nextList = GetNextConnector(connections, conn);
+    for (auto next : nextList) {
         if (next && next->type == Connector::Type::IN) {
             next->value = value;
             if (next->parent) {
-                std::vector<Connector*> outConns;
+                std::vector<Connector *> outConns;
                 next->parent->Calc(outConns);
                 for (auto& out : outConns) {
                     UpdateConnections(connections, out);
@@ -46,703 +90,1247 @@ namespace sym {
             }
         }
     }
+}
 
-    void UpdateConnections(std::vector<Component*> comps, std::vector<Line*>& connections) {
-        for (auto& comp : comps) {
-            if (IsInputComponent(comp))
-                UpdateConnections(connections, &comp->outConn);
+void UpdateConnections(std::vector<Component*> comps, std::vector<Line *> &connections) {
+    for (auto& comp : comps) {
+        if (IsInputComponent(comp)) {
+            for (auto& out : comp->outConns)
+                UpdateConnections(connections, &out);
+        }
+
+    }
+}
+
+Component* Component::Clone(Component* comp) {
+    switch (comp->type) {
+    case Component::Type::INPUT1:
+        return new Input(static_cast<Input*>(comp));
+    case Component::Type::INPUT2:
+        return new InputBlock(static_cast<InputBlock *>(comp));
+    case Component::Type::INPUT4:
+        return new InputBlock(static_cast<InputBlock *>(comp));
+    case Component::Type::INPUT8:
+        return new InputBlock(static_cast<InputBlock *>(comp));
+    case Component::Type::OUTPUT1:
+        return new Output(static_cast<Output*>(comp));
+    case Component::Type::OUTPUT2:
+        return new OutputBlock(static_cast<OutputBlock *>(comp));
+    case Component::Type::OUTPUT4:
+        return new OutputBlock(static_cast<OutputBlock *>(comp));
+    case Component::Type::OUTPUT8:
+        return new OutputBlock(static_cast<OutputBlock *>(comp));
+    case Component::Type::GATE:
+        return new Gate(static_cast<Gate*>(comp));
+    case Component::Type::BLOCK:
+        return new Block(static_cast<Block*>(comp));
+    default:
+        printf("Component::Clone unknown component type:%d\n", comp->type);
+    }
+    return nullptr;
+}
+
+void Component::Move(const Vector2 &delta) {
+    rect.x += delta.x;
+    rect.y += delta.y;
+    for (auto &out : outConns) {
+        out.pos.x += delta.x;
+        out.pos.y += delta.y;
+    }
+    for (auto &in : inConns) {
+        in.pos.x += delta.x;
+        in.pos.y += delta.y;
+    }
+}
+
+void Component::Draw() {
+    Vector2 pos = GetMousePosition();
+    for (auto& out : outConns) {
+        if (CheckCollisionPointCircle(pos, out.pos, 5)) {
+            DrawRectangleLines(out.pos.x - 5, out.pos.y - 5, 10, 10, PINK);
         }
     }
-
-    Component* Component::Create(Component* comp) {
-        switch (comp->type) {
-        case Component::Type::INPUT1:
-            return new Input(static_cast<Input*>(comp));
-        case Component::Type::OUTPUT1:
-            return new Output(static_cast<Output*>(comp));
-        case Component::Type::GATE:
-            return new Gate(static_cast<Gate*>(comp));
-        case Component::Type::BLOCK:
-            return new Block(static_cast<Block*>(comp));
-        }
-        return nullptr;
-    }
-
-    void Component::Move(const Vector2& delta) {
-        rect.x += delta.x;
-        rect.y += delta.y;
-        outConn.pos.x += delta.x;
-        outConn.pos.y += delta.y;
-        for (auto& in : inConns) {
-            in.pos.x += delta.x;
-            in.pos.y += delta.y;
+    for (auto& in : inConns) {
+        if (CheckCollisionPointCircle(pos, in.pos, 5)) {
+            DrawRectangleLines(in.pos.x - 5, in.pos.y - 5, 10, 10, PINK);
         }
     }
+    if (CheckCollisionPointRec(pos, rect)) {
+        DrawRectangleLines(rect.x, rect.y, rect.width, rect.height, PINK);
+    }
+    if (collide) {
+        DrawLine(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height, RED);
+        DrawLine(rect.x, rect.y + rect.height, rect.x + rect.width, rect.y, RED);
+    }
+}
 
-    void Component::Draw() {
+Connector* Component::CheckEndpoints(const Vector2& pos) {
+    for (auto &in : inConns) {
+        if (CheckCollisionPointRec(pos, {in.pos.x - 5, in.pos.y - 5, 10, 10})) {
+            return &in;
+        }
+    }
+    for (auto& out : outConns) {
+        if (CheckCollisionPointRec(pos, {out.pos.x - 5, out.pos.y - 5, 10, 10})) {
+            return &out;
+        }
+    }
+    return nullptr;
+}
+
+Gate::Gate(std::ifstream& s, Component::Type type): Component(s, type) {
+    Read(s, &gateType);
+
+    size_t size;
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        inConns.emplace_back(s, this);
+    
+    outConns[0] = Connector(s, this);
+}
+
+void Gate::Calc(std::vector<Connector*>& _outConns) {
+    switch (gateType) {
+    case Type::NOT:
+        // FIXME: Not sure about this
+        outConns[0].value = !inConns[0].value;
+        break;
+    case Type::AND:
+        outConns[0].value = inConns[0].value & inConns[1].value;
+        break;
+    case Type::OR:
+        outConns[0].value = inConns[0].value | inConns[1].value;
+        break;
+    case Type::XOR:
+        outConns[0].value = inConns[0].value ^ inConns[1].value;
+        break;
+    }
+    return _outConns.push_back(&outConns[0]);
+}
+
+void Gate::Draw() {
+    float x = rect.x;
+    float y = rect.y;
+
+    DrawCircle(x + 45, y + 15, 15, BLUE);
+    DrawRectangle(x + 15, y, 30, HEIGHT, BLUE);
+
+    Vector2 pos = GetMousePosition();
+    if (inConns.size() == 1) {
+        DrawLineEx({x + 5, y + 15}, {x + 15, y + 15}, 3.0, BLUE);
+        DrawCircle(x + 5, y + 15, 5, inConns[0].value ? RED : GRAY);
+    } else {
+        DrawLineEx({x + 5, y + 5}, {x + 15, y + 5}, 3.0, BLUE);
+        DrawLineEx({x + 5, y + 25}, {x + 15, y + 25}, 3.0, BLUE);
+        DrawCircle(x + 5, y + 5, 5, inConns[0].value ? RED : GRAY);
+        DrawCircle(x + 5, y + 25, 5, inConns[1].value ? RED : GRAY);
+    }
+
+    DrawLineEx({x + 60, y + 15}, {x + 70, y + 15}, 3.0, BLUE);
+    DrawCircle(x + 70, y + 15, 5, outConns[0].value ? RED : GRAY);
+    DrawText(text.c_str(), x + 20, y + 10, 15, RAYWHITE);
+
+    Component::Draw();
+}
+
+void Gate::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
+    Write(s, &gateType);
+
+    size_t size = inConns.size();
+    Write(s, &size);
+    for (auto& inConn : inConns)
+        inConn.Save(s);
+
+    outConns[0].Save(s);
+}
+
+Input::Input(std::ifstream& s, Component::Type type): Component(s, type) {
+    outConns[0] = Connector(s, this);
+}
+
+void Input::Draw() {
+    Color color = outConns[0].value ? RED : GRAY;
+
+    DrawRectangle(rect.x, rect.y, 20, HEIGHT, color);
+    DrawTriangle({rect.x + 20, rect.y}, {rect.x + 20, rect.y + HEIGHT}, {rect.x + 30, rect.y + HEIGHT / 2}, color);
+    DrawCircle(outConns[0].pos.x, outConns[0].pos.y, 5, color);
+    DrawText(TextFormat("%.2s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
+
+    Component::Draw();
+}
+
+void Input::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
+    outConns[0].Save(s);
+}
+
+InputBlock::InputBlock(std::ifstream& s, Component::Type type) : Component(s, type) {
+    size_t size;
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        outConns.emplace_back(s, this);
+
+    Read(s, &isIcon);
+}
+
+void InputBlock::Draw() {
+    if (isIcon) {
+        Color color = GRAY;
+        DrawRectangle(rect.x, rect.y, 20, HEIGHT, color);
+        DrawTriangle({rect.x + 20, rect.y}, {rect.x + 20, rect.y + HEIGHT},
+                     {rect.x + 30, rect.y + HEIGHT / 2}, color);
+        DrawCircle(outConns[0].pos.x, outConns[0].pos.y, 5, color);
+        DrawText(TextFormat("%.2s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
+    } else {
+        int value = 0;
+        int mod = 1;
+
         Vector2 pos = GetMousePosition();
-        if (CheckCollisionPointCircle(pos, outConn.pos, 5)) {
-            DrawRectangleLines(outConn.pos.x - 5, outConn.pos.y - 5, 10, 10, PINK);
+
+        for (auto &out : outConns) {
+            Color connColor = out.value ? RED : GRAY;
+            DrawCircle(out.pos.x, out.pos.y, 5, connColor);
+
+            if (CheckCollisionPointCircle(pos, out.pos, 5)) {
+                DrawRectangleLines(out.pos.x - 5, out.pos.y - 5, 10, 10, PINK);
+            }
+            value += out.value * mod;
+            mod *= 2;
         }
-        for (auto& in : inConns) {
+        float saturation = value; // 0.5 (1) - 1.0 (255)
+        Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
+        DrawRectangleRounded({rect.x, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
+        DrawText(TextFormat("%d", value), rect.x + 15, rect.y + 5, 16, RAYWHITE);
+    }
+
+    Component::Draw();
+}
+
+void InputBlock::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
+
+    size_t size = outConns.size();
+    Write(s, &size);
+    for (auto& outConn : outConns)
+        outConn.Save(s);
+
+    Write(s, &isIcon);
+}
+
+Output::Output(std::ifstream& s, Component::Type type) : Component(s, type) {
+    size_t size;
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        inConns.emplace_back(s, this);
+}
+
+void Output::Draw() {
+    Color color = inConns[0].value ? RED : GRAY;
+
+    DrawRectangle(rect.x + 20, rect.y, 20, HEIGHT, color);
+    DrawTriangle({rect.x + 20, rect.y}, {rect.x + 10, rect.y + HEIGHT / 2 }, {rect.x + 20, rect.y + HEIGHT}, color);
+    DrawCircle(inConns[0].pos.x, inConns[0].pos.y, 5, color);
+    DrawText(TextFormat("%.2s", text.c_str()), rect.x + 20, rect.y + 5, 18, RAYWHITE);
+
+    Component::Draw();
+}
+
+void Output::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
+
+    size_t size = inConns.size();
+    Write(s, &size);
+    for (auto& inConn : inConns)
+        inConn.Save(s);
+}
+
+OutputBlock::OutputBlock(std::ifstream& s, Component::Type type) : Component(s, type) {
+    size_t size;
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        inConns.emplace_back(s, this);
+
+    Read(s, &isIcon);
+}
+
+void OutputBlock::Draw() {
+    if (isIcon) {
+        Color color = GRAY;
+        DrawRectangle(rect.x + 20, rect.y, 20, HEIGHT, color);
+        DrawTriangle({rect.x + 20, rect.y}, {rect.x + 10, rect.y + HEIGHT / 2},
+                     {rect.x + 20, rect.y + HEIGHT}, color);
+        DrawCircle(inConns[0].pos.x, inConns[0].pos.y, 5, color);
+        DrawText(TextFormat("%.2s", text.c_str()), rect.x + 20, rect.y + 5, 18, RAYWHITE);
+    } else {
+        int value = 0;
+        int mod = 1;
+
+        Vector2 pos = GetMousePosition();
+        for (auto &in : inConns) {
+            Color connColor = in.value ? RED : GRAY;
+            DrawCircle(in.pos.x, in.pos.y, 5, connColor);
+
+            if (CheckCollisionPointCircle(pos, in.pos, 5)) {
+                DrawRectangleLines(in.pos.x - 5, in.pos.y - 5, 10, 10, PINK);
+            }
+            value += in.value * mod;
+            mod *= 2;
+        }
+        float saturation = value; // 0.5 (1) - 1.0 (255)
+        Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
+        DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
+        DrawText(TextFormat("%d", value), rect.x + 15, rect.y + 5, 16, RAYWHITE);
+    }
+
+    Component::Draw();
+}
+
+void OutputBlock::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
+
+    size_t size = inConns.size();
+    Write(s, &size);
+    for (auto& inConn : inConns)
+        inConn.Save(s);
+
+    Write(s, &isIcon);
+}
+/*
+void BlockConnector::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, text.c_str(), text.size());
+
+    size_t size = inputs.size();
+    Write(s, &size);
+    for (auto& input : inputs)
+        Write(s, &input);
+
+    Write(s, &outConn);
+}
+*/
+Block::Block(float x, float y, const char *text, Color color, std::vector<Component *> comps,
+      std::vector<Line *> connections)
+    : Component(x, y, WIDTH, HEIGHT, text, Component::Type::BLOCK), color(color) {
+
+    for (auto& comp : comps) {
+        this->comps.push_back(comp);
+    }
+    for (auto& line : connections) {
+        this->connections.push_back(line);
+    }
+}
+
+Block::Block(const Block *block)
+    : Component(block), color(block->color), isIcon(false) {
+    numInputs = 0;
+    numOutputs = 0;
+
+    for (auto &comp : block->comps) {
+        switch (comp->type) {
+        case Type::INPUT1:
+            numInputs += 1;
+            break;
+        case Type::INPUT2:
+            numInputs += 2;
+            break;
+        case Type::INPUT4:
+            numInputs += 4;
+            break;
+        case Type::INPUT8:
+            numInputs += 8;
+            break;
+        case Type::OUTPUT1:
+            numOutputs += 1;
+            break;
+        case Type::OUTPUT2:
+            numOutputs += 1;
+            break;
+        case Type::OUTPUT4:
+            numOutputs += 1;
+            break;
+        case Type::OUTPUT8:
+            numOutputs += 1;
+            break;
+        }
+        comps.push_back(comp);
+    }
+    for (auto &line : block->connections) {
+        connections.push_back(line);
+    }
+    rect.height = std::max<float>(HEIGHT, std::max(numInputs, numOutputs) * 15.0 + 10);
+    rect.width += 20;
+    printf("New height:%f %d %d\n", rect.height, numInputs, numOutputs);
+
+    int inIdx = 0;
+    int outIdx = 0;
+    for (auto& comp : comps) {
+        if (IsInputComponent(comp)) {
+            BlockConnector bconn = {this, {rect.x + 5, 5 + rect.y + 15 * inIdx++}, Connector::Type::IN, &comp->outConns[0]};
+            inputs.push_back(bconn);
+        } else if (IsOutputComponent(comp)) {
+            BlockConnector bconn = {this, {rect.x + rect.width - 5, 5 + rect.y + 15 * outIdx++}, Connector::Type::OUT, &comp->inConns[0]};
+            outputs.push_back(bconn);
+        }
+    }
+}
+
+Block::Block(std::ifstream& s, Component::Type type) : Component(s, type) {
+    size_t size;
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        ;
+
+    Read(s, &size);
+    for (int i = 0; i < size; i++) {
+        CompIdx idxStart;
+        Read(s, &idxStart);
+        CompIdx idxEnd;
+        Read(s, &idxEnd);
+
+        Connector* start = nullptr;
+        Connector* end = nullptr;
+        if (idxStart.type == Connector::Type::OUT) {
+            // FIXME: WIP
+            start = &comps[idxStart.compIdx]->outConns[0];
+        } else {
+            start = &comps[idxStart.compIdx]->inConns[idxStart.connIdx];
+        }
+        if (idxEnd.type == Connector::Type::OUT) {
+            // FIXME: WIP
+            end = &comps[idxEnd.compIdx]->outConns[0];
+        } else {
+            end = &comps[idxEnd.compIdx]->inConns[idxEnd.connIdx];
+        }
+        connections.push_back(new Line(start, end));
+    }
+
+
+    Read(s, &color);
+    Read(s, &isIcon);
+    Read(s, &numInputs);
+    Read(s, &numOutputs);
+}
+
+void Block::Calc(std::vector<Connector*>& outConns) {
+    for (auto& in : inputs) {
+        if (in.conn)
+            in.conn->value = in.value;
+    }
+    UpdateConnections(comps, connections);
+    Connector* result = nullptr;
+    for (auto& out : outputs) {
+        if (out.conn) {
+            out.value = out.conn->value;
+            result = &out;
+        }
+        outConns.push_back(&out);
+    }
+}
+
+void Block::Move(const Vector2 &delta) {
+    rect.x += delta.x;
+    rect.y += delta.y;
+    for (auto& in : inputs) {
+        in.pos.x += delta.x;
+        in.pos.y += delta.y;
+    }
+    for (auto &out : outputs) {
+        out.pos.x += delta.x;
+        out.pos.y += delta.y;
+    }
+}
+
+void Block::Draw() {
+    if (isIcon) {
+        DrawRectangleRounded({rect.x, rect.y, rect.width, rect.height}, 0.3, 5, color);
+        DrawText(TextFormat("%s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
+    } else {
+        DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 2 * 10, rect.height}, 0.3, 5, color);
+        DrawText(TextFormat("%s", text.c_str()), rect.x + 15, rect.y + 5, 18, RAYWHITE);
+
+        Vector2 pos = GetMousePosition();
+        for (auto& in : inputs) {
+            Color connColor = in.value ? RED : GRAY;
+            DrawCircle(in.pos.x, in.pos.y, 5, connColor);
+
             if (CheckCollisionPointCircle(pos, in.pos, 5)) {
                 DrawRectangleLines(in.pos.x - 5, in.pos.y - 5, 10, 10, PINK);
             }
         }
-        if (CheckCollisionPointRec(pos, rect)) {
-            DrawRectangleLines(rect.x, rect.y, rect.width, rect.height, PINK);
-        }
-        if (collide) {
-            DrawLine(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height, RED);
-            DrawLine(rect.x, rect.y + rect.height, rect.x + rect.width, rect.y, RED);
-        }
-    }
-
-    Connector* Component::CheckEndpoints(const Vector2& pos) {
-        for (auto& in : inConns) {
-            if (CheckCollisionPointRec(pos, { in.pos.x - 5, in.pos.y - 5, 10, 10 })) {
-                return &in;
-            }
-        }
-        if (CheckCollisionPointRec(pos, { outConn.pos.x - 5, outConn.pos.y - 5, 10, 10 })) {
-            return &outConn;
-        }
-        return nullptr;
-    }
-
-    void Gate::Calc(std::vector<Connector*>& outConns) {
-        switch (gateType) {
-        case Type::NOT:
-            outConn.value = !inConns[0].value;
-            break;
-        case Type::AND:
-            outConn.value = inConns[0].value & inConns[1].value;
-            break;
-        case Type::OR:
-            outConn.value = inConns[0].value | inConns[1].value;
-            break;
-        case Type::XOR:
-            outConn.value = inConns[0].value ^ inConns[1].value;
-            break;
-        }
-        return outConns.push_back(&outConn);
-    }
-
-    void Gate::Draw() {
-        float x = rect.x;
-        float y = rect.y;
-
-        DrawCircle(x + 45, y + 15, 15, BLUE);
-        DrawRectangle(x + 15, y, 30, HEIGHT, BLUE);
-
-        Vector2 pos = GetMousePosition();
-        if (inConns.size() == 1) {
-            DrawLineEx({ x + 5, y + 15 }, { x + 15, y + 15 }, 3.0, BLUE);
-            DrawCircle(x + 5, y + 15, 5, inConns[0].value ? RED : GRAY);
-        }
-        else {
-            DrawLineEx({ x + 5, y + 5 }, { x + 15, y + 5 }, 3.0, BLUE);
-            DrawLineEx({ x + 5, y + 25 }, { x + 15, y + 25 }, 3.0, BLUE);
-            DrawCircle(x + 5, y + 5, 5, inConns[0].value ? RED : GRAY);
-            DrawCircle(x + 5, y + 25, 5, inConns[1].value ? RED : GRAY);
-        }
-
-        DrawLineEx({ x + 60, y + 15 }, { x + 70, y + 15 }, 3.0, BLUE);
-        DrawCircle(x + 70, y + 15, 5, outConn.value ? RED : GRAY);
-        DrawText(text.c_str(), x + 20, y + 10, 15, RAYWHITE);
-
-        Component::Draw();
-    }
-
-    void Input::Draw() {
-        Color color = outConn.value ? RED : GRAY;
-
-        DrawRectangle(rect.x, rect.y, 20, HEIGHT, color);
-        DrawTriangle({ rect.x + 20, rect.y }, { rect.x + 20, rect.y + HEIGHT }, { rect.x + 30, rect.y + HEIGHT / 2 }, color);
-        DrawCircle(outConn.pos.x, outConn.pos.y, 5, color);
-        DrawText(TextFormat("%d", outConn.value), rect.x + 5, rect.y + 5, 18, RAYWHITE);
-
-        Component::Draw();
-    }
-
-    void Output::Draw() {
-        Color color = inConns[0].value ? RED : GRAY;
-
-        DrawRectangle(rect.x + 20, rect.y, 20, HEIGHT, color);
-        DrawTriangle({ rect.x + 20, rect.y }, { rect.x + 10, rect.y + HEIGHT / 2 }, { rect.x + 20, rect.y + HEIGHT }, color);
-        DrawCircle(inConns[0].pos.x, inConns[0].pos.y, 5, color);
-        DrawText(TextFormat("%d", inConns[0].value), rect.x + 20, rect.y + 5, 18, RAYWHITE);
-
-        Component::Draw();
-    }
-
-    Block::Block(float x, float y, const char* text, Color color, std::vector<Component*> comps,
-        std::vector<Line*> connections)
-        : Component(x, y, WIDTH, HEIGHT, text, Component::Type::BLOCK), color(color) {
-
-        for (auto& comp : comps) {
-            this->comps.push_back(comp);
-        }
-        for (auto& line : connections) {
-            this->connections.push_back(line);
-        }
-    }
-
-    Block::Block(const Block* block)
-        : Component(block), color(block->color), isIcon(false) {
-        numInputs = 0;
-        numOutputs = 0;
-
-        for (auto& comp : block->comps) {
-            switch (comp->type) {
-            case Type::INPUT1:
-                numInputs += 1;
-                break;
-            case Type::INPUT2:
-                numInputs += 2;
-                break;
-            case Type::INPUT4:
-                numInputs += 4;
-                break;
-            case Type::INPUT8:
-                numInputs += 8;
-                break;
-            case Type::OUTPUT1:
-                numOutputs += 1;
-                break;
-            }
-            comps.push_back(comp);
-        }
-        for (auto& line : block->connections) {
-            connections.push_back(line);
-        }
-        rect.height = std::max<float>(HEIGHT, std::max(numInputs, numOutputs) * 15.0 + 10);
-        rect.width += 20;
-        printf("New height:%f %d %d\n", rect.height, numInputs, numOutputs);
-
-        int inIdx = 0;
-        int outIdx = 0;
-        for (auto& comp : comps) {
-            if (IsInputComponent(comp)) {
-                BlockConnector bconn = { this, {rect.x + 5, 5 + rect.y + 15 * inIdx++}, Connector::Type::IN, &comp->outConn };
-                inputs.push_back(bconn);
-            }
-            else if (IsOutputComponent(comp)) {
-                BlockConnector bconn = { this, {rect.x + rect.width - 5, 5 + rect.y + 15 * outIdx++}, Connector::Type::OUT, &comp->inConns[0] };
-                outputs.push_back(bconn);
-            }
-        }
-    }
-
-    void Block::Calc(std::vector<Connector*>& outConns) {
-        for (auto& in : inputs) {
-            if (in.conn)
-                in.conn->value = in.value;
-        }
-        UpdateConnections(comps, connections);
-        Connector* result = nullptr;
         for (auto& out : outputs) {
-            if (out.conn) {
-                out.value = out.conn->value;
-                result = &out;
-            }
-            outConns.push_back(&out);
-        }
-    }
+            Color connColor = out.value ? RED : GRAY;
+            DrawCircle(out.pos.x, out.pos.y, 5, connColor);
 
-    void Block::Move(const Vector2& delta) {
-        rect.x += delta.x;
-        rect.y += delta.y;
-        for (auto& in : inputs) {
-            in.pos.x += delta.x;
-            in.pos.y += delta.y;
-        }
-        for (auto& out : outputs) {
-            out.pos.x += delta.x;
-            out.pos.y += delta.y;
-        }
-    }
-
-    void Block::Draw() {
-        if (isIcon) {
-            DrawRectangleRounded({ rect.x, rect.y, rect.width, rect.height }, 0.3, 5, color);
-            DrawText(TextFormat("%s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
-        }
-        else {
-            DrawRectangleRounded({ rect.x + 10, rect.y, rect.width - 2 * 10, rect.height }, 0.3, 5, color);
-            DrawText(TextFormat("%s", text.c_str()), rect.x + 15, rect.y + 5, 18, RAYWHITE);
-
-            Vector2 pos = GetMousePosition();
-            for (auto& in : inputs) {
-                Color connColor = in.value ? RED : GRAY;
-                DrawCircle(in.pos.x, in.pos.y, 5, connColor);
-
-                if (CheckCollisionPointCircle(pos, in.pos, 5)) {
-                    DrawRectangleLines(in.pos.x - 5, in.pos.y - 5, 10, 10, PINK);
-                }
-            }
-            for (auto& out : outputs) {
-                Color connColor = out.value ? RED : GRAY;
-                DrawCircle(out.pos.x, out.pos.y, 5, connColor);
-
-                if (CheckCollisionPointCircle(pos, out.pos, 5)) {
-                    DrawRectangleLines(out.pos.x - 5, out.pos.y - 5, 10, 10, PINK);
-                }
+            if (CheckCollisionPointCircle(pos, out.pos, 5)) {
+                DrawRectangleLines(out.pos.x - 5, out.pos.y - 5, 10, 10, PINK);
             }
         }
-
-        Component::Draw();
     }
 
-    Connector* Block::CheckEndpoints(const Vector2& pos) {
-        for (auto& in : inputs) {
-            if (CheckCollisionPointRec(pos, { in.pos.x - 5, in.pos.y - 5, 10, 10 })) {
-                return &in;
-            }
-        }
-        for (auto& out : outputs) {
-            if (CheckCollisionPointRec(pos, { out.pos.x - 5, out.pos.y - 5, 10, 10 })) {
-                return &out;
-            }
-        }
-        return nullptr;
-    }
+    Component::Draw();
+}
 
-    Block::~Block() {
-        printf("Block dtor num comps:%d\n", comps.size());
-        for (auto& comp : comps) {
-            printf("Block dtor delete comp\n");
-            delete comp;
-            comp = nullptr;
-        }
-        comps.clear();
-
-        for (auto& line : connections) {
-            printf("Block dtor delete comp\n");
-            delete line;
-            line = nullptr;
-        }
-        connections.clear();
-    }
-
-    void MenuPanel::Update() {
-        for (auto& button : buttons) {
-            button.rec.y = GetScreenHeight() - 40 + yOffset;
+Connector* Block::CheckEndpoints(const Vector2 &pos) {
+    for (auto& in : inputs) {
+        if (CheckCollisionPointRec(pos, {in.pos.x - 5, in.pos.y - 5, 10, 10})) {
+            return &in;
         }
     }
-
-    void MenuPanel::Draw() {
-        Vector2 pos = GetMousePosition();
-        for (auto& button : buttons) {
-            bool selected = CheckCollisionPointRec(pos, button.rec);
-            Color bg = selected ? ORANGE : DARKBLUE;
-            Color fg = selected ? DARKBLUE : ORANGE;
-            DrawRectangleRec(button.rec, bg);
-            DrawText(button.text, button.rec.x + 10, button.rec.y, 20, fg);
+    for (auto& out : outputs) {
+        if (CheckCollisionPointRec(pos, {out.pos.x - 5, out.pos.y - 5, 10, 10})) {
+            return &out;
         }
     }
+    return nullptr;
+}
 
-    void CreateBlockDialog::Draw() {
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(RAYWHITE, 0.8f));
+void Block::Save(std::ofstream& s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
 
-        float width = 250;
-        float height = 150;
-        Vector2 pos = { (float)GetScreenWidth() / 2 - width / 2, (float)GetScreenHeight() / 2 - height / 2 };
+    size_t size = comps.size();
+    Write(s, &size);
+    for (auto& comp: comps)
+        comp->Save(s);
+
+    size = connections.size();
+    Write(s, &size);
+    for (auto& connection : connections) {
+        CompIdx idxStart = GetComponentIdx(connections, comps, connection->start);
+        Write(s, &idxStart);
+        CompIdx idxEnd = GetComponentIdx(connections, comps, connection->end);
+        Write(s, &idxEnd);
+    }
+
+    size = inputs.size();
+    Write(s, &size);
+    for (auto& input : inputs)
+        input.Save(s);
+
+    size = outputs.size();
+    Write(s, &size);
+    for (auto& output : outputs)
+        output.Save(s);
+
+    Write(s, &color);
+    Write(s, &isIcon);
+    Write(s, &numInputs);
+    Write(s, &numOutputs);
+}
+
+Block::~Block() {
+    printf("Block dtor num comps:%d\n", comps.size());
+    for (auto &comp : comps) {
+        printf("Block dtor delete comp\n");
+        delete comp;
+        comp = nullptr;
+    }
+    comps.clear();
+
+    for (auto &line : connections) {
+        printf("Block dtor delete comp\n");
+        delete line;
+        line = nullptr;
+    }
+    connections.clear();
+}
+
+void MenuPanel::Update() {
+    for (auto &button : buttons) {
+        button.rec.y = GetScreenHeight() - 40 + yOffset;
+    }
+}
+
+void MenuPanel::Draw() {
+    Vector2 pos = GetMousePosition();
+    for (auto &button : buttons) {
+        bool selected = CheckCollisionPointRec(pos, button.rec);
+        Color bg = selected ? ORANGE : DARKBLUE;
+        Color fg = selected ? DARKBLUE : ORANGE;
+        DrawRectangleRec(button.rec, bg);
+        DrawText(button.text, button.rec.x + 10, button.rec.y, 20, fg);
+    }
+}
+
+void MenuPanel::Save(std::ofstream& s) {
+    for (auto& button : buttons)
+        Write(s, &button);
+}
+
+void MainMenu::Update() {
+    short int i = -1;
+    for (auto &button : buttons) {
+        button.rec.y = GetScreenHeight() / 2 + i * 70 - 50;
+        button.rec.x = GetScreenWidth() / 2 - button.rec.width / 2;
+        i += 2;
+    }
+}
+
+void MainMenu::Draw() {
+    Vector2 pos = GetMousePosition();
+    for (auto &button : buttons) {
+        bool selected = CheckCollisionPointRec(pos, button.rec);
+        Color bg = selected ? ORANGE : DARKBLUE;
+        Color fg = selected ? DARKBLUE : ORANGE;
+        DrawRectangleRec(button.rec, bg);
+        DrawText(button.text, button.rec.x + 10, button.rec.y, 20, fg);
+    }
+}
+
+void MainMenu::Save(std::ofstream& s) {
+    for (auto& button : buttons)
+        Write(s, &button);
+}
+
+void Dialog::Draw() {
+    if (type == Type::NONE) return;
+    if (cooldown) {
+        cooldown = false;
+        return;
+    }
+
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(RAYWHITE, 0.8f));
+
+    float width = 250;
+    float height = 150;
+    Vector2 pos = { (float)GetScreenWidth() / 2 - width / 2, (float)GetScreenHeight() / 2 - height / 2 };
+
+    if (type == Type::CREATE_BLOCK) {
         result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Create Block", "Select name for a block", "Ok;Cancel", name);
         color = GuiColorPicker({ pos.x + width, pos.y, 20, height }, color);
+        
 
         if (result >= 0) {
-            show = false;
+            type = Type::NONE;
             if (result == 1)
                 parent->CreateBlock(name, color);
         }
-    }
+    } else if (type == Type::NEW) {
+        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Create project", "Give your project a name","Ok;Cancel", name);
 
-    void CreateBlockDialog::Show() {
-        show = true;
-    }
-
-    Symulator::~Symulator() {
-        for (auto& menu : compMenu) {
-            delete menu;
+        if (result >= 0) {
+            type = Type::NONE;
+            if (result == 1) {
+                parent->name = name;
+                parent->state = Symulator::State::ACTIVE;
+            }
         }
-        compMenu.clear();
-        DeleteAll();
-    }
+    } else {
+        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Load project", "Select your project", "Ok;Cancel", name);
 
-    void Symulator::DrawPanel() {
-        DrawRectangleLines(0, 0, GetScreenWidth(), 40, YELLOW);
-        DrawRectangleLines(0, GetScreenHeight() - 40, GetScreenWidth(), 40, YELLOW);
-        DrawRectangleLines(0, 0, GetScreenWidth(), GetScreenHeight(), YELLOW);
-
-        DrawComponentMenu();
-        menu.Draw();
-    }
-
-    void Symulator::DrawComponents() {
-        for (auto& comp : comps) {
-            comp->Draw();
-        }
-    }
-
-    void Symulator::DrawConnections() {
-        int i = 1;
-        for (auto& con : connections) {
-            float y1 = con->start->pos.y;
-            float y2 = con->end->pos.y;
-            float w1 = (con->end->pos.x - con->start->pos.x) * i++ / 10;
-            DrawLineEx({ con->start->pos.x, y1 }, { con->start->pos.x + w1, y1 }, 3.0, RAYWHITE);
-            DrawLineEx({ con->start->pos.x + w1, y2 }, { con->end->pos.x, y2 }, 3.0, RAYWHITE);
-            DrawLineEx({ con->start->pos.x + w1, y1 }, { con->start->pos.x + w1, y2 }, 3.0, RAYWHITE);
-        }
-    }
-
-    void Symulator::CreateComponentMenu() {
-        float x = 20;
-        compMenu.push_back(new Gate(x, 5, "AND", Gate::Type::AND));
-        x += Gate::WIDTH + 20;
-        compMenu.push_back(new Gate(x, 5, "OR", Gate::Type::OR));
-        x += Gate::WIDTH + 20;
-        compMenu.push_back(new Gate(x, 5, "XOR", Gate::Type::XOR));
-        x += Gate::WIDTH + 20;
-        compMenu.push_back(new Gate(x, 5, "NOT", Gate::Type::NOT, true));
-        x += Gate::WIDTH + 20;
-        compMenu.push_back(new Input(x, 5, "IN1"));
-        x += Input::WIDTH + 20;
-        compMenu.push_back(new Output(x, 5, "OUT1"));
-        compMenuX = x + Output::WIDTH + 20;
-    }
-
-    void Symulator::CreateBlock(const char* name, Color color) {
-        compMenu.push_back(new Block(compMenuX, 5, name, color, comps, connections));
-        compMenuX += Block::WIDTH + 20;
-        comps.clear();
-        connections.clear();
-    }
-
-    void Symulator::Log(const char* text) {
-        DrawText(text, 10, GetScreenHeight() - 20, 10, RAYWHITE);
-    }
-
-    void Symulator::DrawComponentMenu() {
-        float width = 20;
-        float height = 40;
-        for (auto& comp : compMenu) {
-            comp->Draw();
-        }
-
-        Vector2 pos1 = { 0, 0 };
-        DrawTriangle({ pos1.x, pos1.y }, { pos1.x, pos1.y + height },
-            { pos1.x + width, pos1.y + height / 2 }, YELLOW);
-        Vector2 pos2 = { (float)GetScreenWidth() - 20, 0 };
-        DrawTriangle({ pos2.x + width, pos2.y }, { pos2.x, pos2.y + height / 2 },
-            { pos2.x + width, pos2.y + height }, YELLOW);
-    }
-
-    void Symulator::MoveComponentMenu(float delta) {
-        for (auto& comp : compMenu) {
-            comp->Move({ delta, 0 });
-        }
-    }
-
-    void Symulator::DeleteConnection(Connector* conn) {
-        for (int i = 0; i < connections.size(); i++) {
-            if (connections[i]->start == conn || connections[i]->end == conn) {
-                printf("Connection Delete\n");
-                Connector* next = nullptr;
-                if (conn->type == Connector::Type::OUT) {
-                    next = GetNextConnector(connections, conn);
-                }
-
-                delete connections[i];
-                connections.erase(connections.begin() + i);
-
-                if (next) {
-                    next->value = false;
-                    UpdateConnections(connections, next);
-                }
-                break;
+        if (result >= 0) {
+            type = Type::NONE;
+            if (result == 1) {
+                parent->LoadProject(name);
             }
         }
     }
+}
 
-    void Symulator::DeleteComponent(Component* comp) {
-        if (comp->type == Component::Type::BLOCK) {
-            DeleteBlock(static_cast<Block*>(comp));
+void Dialog::Show(Type showType) {
+    type = showType;
+    cooldown = true;
+}
+
+Symulator::~Symulator() {
+    for (auto &menu : compMenu) {
+        delete menu;
+    }
+    compMenu.clear();
+    DeleteAll();
+}
+
+void Symulator::DrawPanel() {
+    DrawRectangleLines(0, 0, GetScreenWidth(), 40, YELLOW);
+    DrawRectangleLines(0, GetScreenHeight() - 40, GetScreenWidth(), 40, YELLOW);
+    DrawRectangleLines(0, 0, GetScreenWidth(), GetScreenHeight(), YELLOW);
+
+    DrawComponentMenu();
+    menu.Draw();
+}
+
+void Symulator::DrawComponents() {
+    for (auto &comp : comps) {
+        comp->Draw();
+    }
+}
+
+void Symulator::DrawConnections() {
+    int i = 1;
+    for (auto &con : connections) {
+        float y1 = con->start->pos.y;
+        float y2 = con->end->pos.y;
+        float w1 = (con->end->pos.x - con->start->pos.x) * i++ / 10;
+        DrawLineEx({con->start->pos.x, y1}, {con->start->pos.x + w1, y1}, 3.0, RAYWHITE);
+        DrawLineEx({con->start->pos.x + w1, y2}, {con->end->pos.x, y2 }, 3.0, RAYWHITE);
+        DrawLineEx({con->start->pos.x + w1, y1}, {con->start->pos.x + w1, y2}, 3.0, RAYWHITE);
+    }
+}
+
+void Symulator::CreateComponentMenu() {
+    float x = 20;
+    compMenu.push_back(new Gate(x, 5, "AND", Gate::Type::AND));
+    x += Gate::WIDTH + 20;
+    compMenu.push_back(new Gate(x, 5, "OR", Gate::Type::OR));
+    x += Gate::WIDTH + 20;
+    compMenu.push_back(new Gate(x, 5, "XOR", Gate::Type::XOR));
+    x += Gate::WIDTH + 20;
+    compMenu.push_back(new Gate(x, 5, "NOT", Gate::Type::NOT, true));
+    x += Gate::WIDTH + 20;
+    compMenu.push_back(new Input(x, 5, "I1"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new Output(x, 5, "O1"));
+
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new InputBlock(x, 5, Component::Type::INPUT2, "I2"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new InputBlock(x, 5, Component::Type::INPUT4, "I4"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new InputBlock(x, 5, Component::Type::INPUT8, "I8"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new OutputBlock(x, 5, Component::Type::OUTPUT2, "O2"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new OutputBlock(x, 5, Component::Type::OUTPUT4, "O4"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new OutputBlock(x, 5, Component::Type::OUTPUT8, "O8"));
+
+    compMenuNextX = x + Output::WIDTH + 20;
+}
+
+void Symulator::CreateBlock(const char* name, Color color) {
+    compMenu.push_back(new Block(compMenuNextX, 5, name, color, comps, connections));
+    compMenuNextX += Block::WIDTH + 20;
+    comps.clear();
+    connections.clear();
+}
+
+void Symulator::Log(const char* text) {
+    DrawText(text, 10, GetScreenHeight() - 20, 10, RAYWHITE);
+}
+
+void Symulator::DrawComponentMenu() {
+    float width = 20;
+    float height = 40;
+    for (auto& comp : compMenu) {
+        comp->Draw();
+    }
+
+    Color color = ColorAlpha(YELLOW, 0.8);
+    if (compMenu[0]->rect.x < 20) {
+        Vector2 pos1 = {0, 0};
+        DrawTriangle({pos1.x, pos1.y}, {pos1.x, pos1.y + height},
+                     {pos1.x + width, pos1.y + height / 2}, color);
+    }
+    if (compMenuNextX > GetScreenWidth()) {
+        Vector2 pos2 = {(float)GetScreenWidth() - 20, 0};
+        DrawTriangle({pos2.x + width, pos2.y}, {pos2.x, pos2.y + height / 2},
+                     {pos2.x + width, pos2.y + height}, color);
+    }
+}
+
+void Symulator::MoveComponentMenu(float delta) {
+    float minX = 20;
+    float maxX = GetScreenWidth();
+    if (delta < 0) {
+        if (compMenuNextX < maxX) {
             return;
         }
-
-        for (auto& in : comp->inConns)
-            DeleteConnection(&in);
-        DeleteConnection(&comp->outConn);
-        comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
-    }
-
-    void Symulator::DeleteBlock(Block* comp) {
-        for (auto& in : comp->inputs)
-            DeleteConnection(&in);
-        for (auto& out : comp->outputs)
-            DeleteConnection(&out);
-        comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
-    }
-
-    void Symulator::DeleteAll() {
-        for (auto& comp : comps) {
-            delete comp;
+    } else {
+        float newX = compMenu[0]->rect.x + delta;
+        if (newX > minX) {
+            return;
         }
-        comps.clear();
-        for (auto& line : connections) {
-            delete line;
+    }
+    compMenuNextX += delta;
+    for (auto &comp : compMenu) {
+        comp->Move({delta, 0});
+    }
+}
+
+void Symulator::DeleteConnection(Connector* conn) {
+    std::vector<Connector *> nextList;
+    std::list<int> idxToDelete;
+    for (int i = 0; i < connections.size(); i++) {
+        if (connections[i]->start == conn || connections[i]->end == conn) {
+            printf("Connection Delete %d\n", i);
+            if (conn->type == Connector::Type::OUT && nextList.size() == 0) {
+                nextList = GetNextConnector(connections, conn);
+            }
+
+            idxToDelete.push_front(i);
         }
-        connections.clear();
     }
 
-    Component* Symulator::CheckComponentMenu(const Vector2& pos) {
-        if (state != State::GATE_MOVING) {
-            for (auto& gate : compMenu) {
-                if (pos.x >= gate->rect.x && pos.x < gate->rect.x + gate->rect.width &&
-                    pos.y >= gate->rect.y && pos.y < gate->rect.y + gate->rect.height) {
+    for (auto i : idxToDelete) {
+        delete connections[i];
+        connections.erase(connections.begin() + i);
+    }
 
-                    return gate;
-                }
+    for (auto next : nextList) {
+        printf("next type:%d val:%d\n", next->type, next->value);
+        next->value = false;
+        UpdateConnections(connections, next);
+    }
+}
+
+void Symulator::DeleteComponent(Component* comp) {
+    if (comp->type == Component::Type::BLOCK) {
+        DeleteBlock(static_cast<Block *>(comp));
+        return;
+    }
+
+    for (auto& in : comp->inConns)
+        DeleteConnection(&in);
+    for (auto& out : comp->outConns)
+        DeleteConnection(&out);
+    comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
+}
+
+void Symulator::DeleteBlock(Block* comp) {
+    for (auto &in : comp->inputs)
+        DeleteConnection(&in);
+    for (auto &out : comp->outputs)
+        DeleteConnection(&out);
+    comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
+}
+
+void Symulator::DeleteAll() {
+    for (auto &comp : comps) {
+        delete comp;
+    }
+    comps.clear();
+    for (auto &line : connections) {
+        delete line;
+    }
+    connections.clear();
+}
+
+Component* Symulator::CheckComponentMenu(const Vector2& pos) {
+    if (state != State::GATE_MOVING) {
+        for (auto& gate : compMenu) {
+            if (pos.x >= gate->rect.x && pos.x < gate->rect.x + gate->rect.width &&
+                pos.y >= gate->rect.y && pos.y < gate->rect.y + gate->rect.height) {
+
+                return gate;
             }
         }
-        return nullptr;
     }
+    return nullptr;
+}
 
-    Component* Symulator::CheckComponents(const Vector2& pos) {
-        if (state != State::GATE_MOVING) {
-            for (auto& comp : comps) {
-                if (pos.x >= comp->rect.x && pos.x < comp->rect.x + comp->rect.width &&
-                    pos.y >= comp->rect.y && pos.y < comp->rect.y + comp->rect.height) {
-
-                    return comp;
-                }
-            }
-        }
-        return nullptr;
-    }
-
-    Component* Symulator::CheckInputs(const Vector2& pos) {
-        for (auto& comp : comps) {
-            if (IsInputComponent(comp) &&
-                pos.x >= comp->rect.x && pos.x < comp->rect.x + comp->rect.width &&
+Component* Symulator::CheckComponents(const Vector2& pos) {
+    if (state != State::GATE_MOVING) {
+        for (auto &comp : comps) {
+            if (pos.x >= comp->rect.x && pos.x < comp->rect.x + comp->rect.width &&
                 pos.y >= comp->rect.y && pos.y < comp->rect.y + comp->rect.height) {
 
                 return comp;
             }
         }
-        return nullptr;
     }
+    return nullptr;
+}
 
-    Connector* Symulator::CheckComponentEndpoints(Component* comp, const Vector2& pos) {
-        for (auto& in : comp->inConns) {
-            if (CheckCollisionPointRec(pos, { in.pos.x - 5, in.pos.y - 5, 10, 10 })) {
-                return &in;
+Component* Symulator::CheckInputs(const Vector2& pos) {
+    for (auto& comp : comps) {
+        if (IsInputComponent(comp) && CheckCollisionPointRec(pos, comp->rect))
+            return comp;
+    }
+    return nullptr;
+}
+
+Connector *Symulator::CheckInputConnectors(const Vector2 &pos) {
+    for (auto &comp : comps) {
+        if (IsInputComponent(comp)) {
+            for (auto& out : comp->outConns) {
+                if (CheckCollisionPointRec(pos, {out.pos.x - 5, out.pos.y - 5, 10, 10}))
+                    return &out;
             }
         }
-        if (CheckCollisionPointRec(pos, { comp->outConn.pos.x - 5, comp->outConn.pos.y - 5, 10, 10 })) {
-            return &comp->outConn;
-        }
-        return nullptr;
     }
+    return nullptr;
+}
 
-    Connector* Symulator::CheckComponentEndpoints(const Vector2& pos) {
-        for (auto& comp : comps) {
-            Connector* endPos = comp->CheckEndpoints(pos);
-            if (endPos) return endPos;
+Connector* Symulator::CheckComponentEndpoints(Component* comp, const Vector2 &pos) {
+    for (auto& in : comp->inConns) {
+        if (CheckCollisionPointRec(pos, {in.pos.x - 5, in.pos.y - 5, 10, 10})) {
+            return &in;
         }
-        return nullptr;
     }
+    for (auto& out : comp->outConns) {
+        if (CheckCollisionPointRec(pos, {out.pos.x - 5, out.pos.y - 5, 10, 10})) {
+            return &out;
+        }
+    }
+    return nullptr;
+}
 
-    MenuButton* Symulator::CheckMenu(const Vector2& pos) {
+Connector* Symulator::CheckComponentEndpoints(const Vector2 &pos) {
+    for (auto &comp : comps) {
+        Connector *endPos = comp->CheckEndpoints(pos);
+        if (endPos) return endPos;
+    }
+    return nullptr;
+}
+
+MenuButton* Symulator::CheckMenu(const Vector2 &pos) {
+    if (state == State::MENU) {
+        for (auto& button : mainMenu.buttons) {
+            if (CheckCollisionPointRec(pos, button.rec)) {
+                mainMenu.selected = &button;
+                return mainMenu.selected;
+            }
+        }
+    } else {
         for (auto& button : menu.buttons) {
             if (CheckCollisionPointRec(pos, button.rec)) {
                 menu.selected = &button;
                 return menu.selected;
             }
         }
-        menu.selected = nullptr;
-        return menu.selected;
     }
+    menu.selected = nullptr;
+    return menu.selected;
+}
 
-    bool Symulator::ComponentCollide(Component* comp) {
-        // With Gate Menu
-        if (CheckCollisionRecs(comp->rect, { 0, 0, (float)GetScreenWidth(), 40 }))
-            return true;
-        // With Menu
-        if (CheckCollisionRecs(comp->rect, { 40, (float)GetScreenHeight() - 40, (float)GetScreenWidth() - 2 * 40, 40 }))
-            return true;
+bool Symulator::ComponentCollide(Component* comp) {
+    // With Gate Menu
+    if (CheckCollisionRecs(comp->rect, {0, 0, (float)GetScreenWidth(), 40}))
+        return true;
+    // With Menu
+    if (CheckCollisionRecs(comp->rect, {40, (float)GetScreenHeight() - 40, (float)GetScreenWidth() - 2 * 40, 40}))
+        return true;
 
-        for (auto& g : comps) {
-            if (g != comp) {
-                if (CheckCollisionRecs(g->rect, comp->rect))
-                    return true;
-            }
+    for (auto& g : comps) {
+        if (g != comp) {
+            if (CheckCollisionRecs(g->rect, comp->rect))
+                return true;
         }
-        return false;
+    }
+    return false;
+}
+
+void Symulator::ReadProjectData(std::ifstream& s) {
+    size_t size;
+    Read(s, &size);
+    for (int i = 8; i < size; i++) {
+        Component::Type type;
+        Read(s, &type);
+        if (type == Component::Type::BLOCK) {
+            //compMenu.push_back(new Block(s));
+        } else
+            printf("Warning! Incorrect componet type: %d", type);
     }
 
-    void Symulator::Update() {
-        if (state == State::ACTIVE) {
-            Vector2 pos = GetMousePosition();
+    Read(s, &size);
+    comps.reserve(size);
+    for (int i = 0; i < size; i++) {
+        Component::Type type;
+        Read(s, &type);
+        switch (type) {
+        case Component::Type::INPUT1:
+            comps.push_back(new Input(s, type));
+            break;
+        case Component::Type::OUTPUT1:
+            comps.push_back(new Output(s, type));
+            break;
+        case Component::Type::OUTPUT8:
+            comps.push_back(new OutputBlock(s, type));
+            break;
+        case Component::Type::GATE:
+            comps.push_back(new Gate(s, type));
+            break;
+        case Component::Type::INPUT2:
+        case Component::Type::INPUT4:
+        case Component::Type::INPUT8:
+            comps.push_back(new InputBlock(s, type));
+            break;
+        case Component::Type::BLOCK:
+            //comps.push_back(new Block(s));
+            break;
+        default:
+            break;
+        }
+    }
+    Read(s, &size);
+    connections.reserve(size);
+    for (int i = 0; i < size; i++) {
+        CompIdx idxStart;
+        Read(s, &idxStart);
+        CompIdx idxEnd;
+        Read(s, &idxEnd);
 
-            if (CheckCollisionPointRec(pos, { 0, 0, 20, 40 })) {
-                MoveComponentMenu(-5.0);
-            }
-            if (CheckCollisionPointRec(pos, { (float)GetScreenWidth() - 20, 0, 20, 40 })) {
-                MoveComponentMenu(5.0);
-            }
+        Connector* start = nullptr;
+        Connector* end = nullptr;
+        if (idxStart.type == Connector::Type::OUT) {
+            start = &comps[idxStart.compIdx]->outConns[0];
+        } else {
+            start = &comps[idxStart.compIdx]->inConns[idxStart.connIdx];
+        }
+        if (idxEnd.type == Connector::Type::OUT) {
+            end = &comps[idxEnd.compIdx]->outConns[0];
+        } else {
+            end = &comps[idxEnd.compIdx]->inConns[idxEnd.connIdx];
+        }
+        connections.push_back(new Line(start, end));
+    }
+}
 
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                if (IsKeyDown(KEY_LEFT_CONTROL)) {
-                    Component* in = CheckInputs(pos);
-                    if (in) {
-                        in->outConn.value = !in->outConn.value;
-                    }
-                }
+void Symulator::WriteProjectData(std::ofstream& s) {
+    size_t size = compMenu.size();
+    // FIXME: It will change!!!
+    Write(s, &size);
+    for (size_t i = 8; i < size; i++)
+        compMenu[i]->Save(s);
 
-                MenuButton* menu = CheckMenu(pos);
-                if (menu) {
-                    switch (menu->option) {
-                    case MenuOption::CREATE:
-                        printf("Create selected\n");
-                        blockDialog.Show();
-                        break;
-                    case MenuOption::SAVE:
-                        printf("Save selected\n");
-                        break;
-                    case MenuOption::CLEAR:
-                        printf("Clear selected\n");
-                        DeleteAll();
-                        break;
-                    case MenuOption::OPTIONS:
-                        printf("Options selected\n");
-                        break;
-                    }
-                }
-            }
+    size = comps.size();
+    Write(s, &size);
+    for (int i = 0; i < comps.size(); i++)
+        comps[i]->Save(s);
 
-            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-                Connector* conn = CheckComponentEndpoints(pos);
+    size = connections.size();
+    Write(s, &size);
+    for (auto& connection : connections) {
+        CompIdx idxStart = GetComponentIdx(connections, comps, connection->start);
+        Write(s, &idxStart);
+        CompIdx idxEnd = GetComponentIdx(connections, comps, connection->end);
+        Write(s, &idxEnd);
+    }
+
+    Write(s, &compMenuNextX);
+    Write(s, &numBlocks);
+}
+
+void Symulator::LoadProject(const char* fileName) {
+    if (!DirectoryExists("projects")) {
+        printf("No projects");
+    } else {
+        std::ifstream loadFile(fileName, std::ios_base::binary);
+        if (loadFile.is_open()) {
+            ReadProjectData(loadFile);
+
+            loadFile.close();
+            printf("Load complete\n");
+            state = State::ACTIVE;
+        }
+        else {
+            printf("Unable to open file");
+        }
+    }
+}
+
+void Symulator::SaveProject(const char* fileName) {
+    if (!DirectoryExists("saves")) {
+        std::system("mkdir projects");
+    }
+    std::ofstream saveFile(fileName, std::ios_base::binary);
+    if (saveFile.is_open()) {
+        WriteProjectData(saveFile);
+
+        saveFile.close();
+
+        printf("Save file created");
+        return;
+    } else {
+        printf("Unable to open file");
+        return;
+    }
+}
+
+void Symulator::Update() {
+    if (state == State::ACTIVE) {
+        Vector2 pos = GetMousePosition();
+
+        if (CheckCollisionPointRec(pos, {0, 0, 20, 40})) {
+            MoveComponentMenu(5.0);
+        }
+        if (CheckCollisionPointRec(pos, {(float)GetScreenWidth() - 20, 0, 20, 40})) {
+            MoveComponentMenu(-5.0);
+        }
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            if (IsKeyDown(KEY_LEFT_CONTROL)) {
+                Connector *conn = CheckComponentEndpoints(pos);
                 if (conn) {
                     DeleteConnection(conn);
-                }
-                else {
-                    Component* comp = CheckComponents(pos);
+                } else {
+                    Component *comp = CheckComponents(pos);
                     if (comp) {
                         DeleteComponent(comp);
                     }
                 }
+                return;
             }
 
-            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                Log(TextFormat("x:%.0f y:%.0f", pos.x, pos.y));
+            MenuButton *menu = CheckMenu(pos);
+            if (menu) {
+                switch (menu->option) {
+                case MenuOption::CREATE:
+                    printf("Create selected\n");
+                    blockDialog.Show(Dialog::Type::CREATE_BLOCK);
+                    break;
+                case MenuOption::SAVE:
+                    printf("Save selected\n");
+                    SaveProject(name);
+                    break;
+                case MenuOption::CLEAR:
+                    printf("Clear selected\n");
+                    DeleteAll();
+                    break;
+                case MenuOption::OPTIONS:
+                    printf("Options selected\n");
+                    break;
+                }
+            }
+        }
 
-                Component* comp = CheckComponentMenu(pos);
-                if (comp) {
-                    movingComp = Component::Create(comp);
-                    comps.push_back(movingComp);
+        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+            Component *in = CheckInputs(pos);
+            if (in && in->type == Component::Type::INPUT1) {
+                in->outConns[0].value = !in->outConns[0].value;
+            } else {
+                Connector *conn = CheckInputConnectors(pos);
+                if (conn)
+                    conn->value = !conn->value;
+            }
+        }
+
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            Log(TextFormat("x:%.0f y:%.0f", pos.x, pos.y));
+
+            Component *comp = CheckComponentMenu(pos);
+            if (comp) {
+                movingComp = Component::Clone(comp);
+                comps.push_back(movingComp);
+                state = State::GATE_MOVING;
+
+                printf("%s\n", movingComp->text.c_str());
+            } else if ((comp = CheckComponents(pos)) != nullptr) {
+                lineStart = comp->CheckEndpoints(pos);
+                if (lineStart) {
+                    state = State::LINE_DRAWING;
+
+                    printf("Line start\n");
+                } else {
+                    movingComp = comp;
                     state = State::GATE_MOVING;
 
                     printf("%s\n", movingComp->text.c_str());
                 }
-                else if ((comp = CheckComponents(pos)) != nullptr) {
-                    lineStart = comp->CheckEndpoints(pos);
-                    if (lineStart) {
-                        state = State::LINE_DRAWING;
-
-                        printf("Line start\n");
-                    }
-                    else {
-                        movingComp = comp;
-                        state = State::GATE_MOVING;
-
-                        printf("%s\n", movingComp->text.c_str());
-                    }
-                }
             }
         }
-        else if (state == State::GATE_MOVING) {
-            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                movingComp->Move(GetMouseDelta());
-                movingComp->collide = ComponentCollide(movingComp);
-            }
-            else {
-                if (movingComp->collide) {
-                    if (movingComp->prevPos.x >= 0 && movingComp->prevPos.y >= 0) {
-                        Vector2 delta = { movingComp->prevPos.x - movingComp->rect.x,
-                                         movingComp->prevPos.y - movingComp->rect.y };
-                        movingComp->Move(delta);
-                        movingComp->collide = false;
-                    }
-                    else {
-                        comps.erase(std::remove(comps.begin(), comps.end(), movingComp), comps.end());
-                        delete movingComp;
-                    }
+    } else if (state == State::GATE_MOVING) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            movingComp->Move(GetMouseDelta());
+            movingComp->collide = ComponentCollide(movingComp);
+        } else {
+            if (movingComp->collide) {
+                if (movingComp->prevPos.x >= 0 && movingComp->prevPos.y >= 0) {
+                    Vector2 delta = {movingComp->prevPos.x - movingComp->rect.x,
+                                     movingComp->prevPos.y - movingComp->rect.y};
+                    movingComp->Move(delta);
+                    movingComp->collide = false;
+                } else {
+                    comps.erase(std::remove(comps.begin(), comps.end(), movingComp), comps.end());
+                    delete movingComp;
                 }
-                state = State::ACTIVE;
-                movingComp->prevPos.x = movingComp->rect.x;
-                movingComp->prevPos.y = movingComp->rect.y;
-                movingComp = nullptr;
-
-                printf("Gate DROPPED\n");
             }
+            state = State::ACTIVE;
+            movingComp->prevPos.x = movingComp->rect.x;
+            movingComp->prevPos.y = movingComp->rect.y;
+            movingComp = nullptr;
+
+            printf("Gate DROPPED\n");
         }
-        else if (state == State::LINE_DRAWING) {
+    } else if (state == State::LINE_DRAWING) {
+        Vector2 pos = GetMousePosition();
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            DrawLineEx(lineStart->pos, pos, 3.0, RAYWHITE);
+        } else {
+            Connector* conn = CheckComponentEndpoints(pos);
+            if (conn) {
+                AddConnection(connections, lineStart, conn);
+            }
+            state = State::ACTIVE;
+            printf("Line finished\n");
+        }
+    } else if (state == State::MENU && blockDialog.type == Dialog::Type::NONE) {
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             Vector2 pos = GetMousePosition();
-            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                DrawLineEx(lineStart->pos, pos, 3.0, RAYWHITE);
-            }
-            else {
-                Connector* conn = CheckComponentEndpoints(pos);
-                if (conn) {
-                    connections.push_back(new Line(lineStart, conn));
+            MenuButton *menu = CheckMenu(pos);
+            if (menu) {
+                switch (menu->option) {
+                case MenuOption::NEW:
+                    printf("New selected\n");
+                    blockDialog.Show(Dialog::Type::NEW);
+                    break;
+                case MenuOption::LOAD:
+                    printf("Load selected\n");
+                    blockDialog.Show(Dialog::Type::LOAD);
+                    break;
                 }
-                state = State::ACTIVE;
-                printf("Line finished\n");
             }
         }
-
-        UpdateConnections(comps, connections);
-        menu.Update();
+        mainMenu.Update();
+        
     }
+    UpdateConnections(comps, connections);
+    menu.Update();
+}
 
-    void Symulator::Draw() {
-        BeginDrawing();
+void Symulator::Draw() {
+    BeginDrawing();
 
-        ClearBackground(GetColor(0x052c46ff));
+    ClearBackground(GetColor(0x052c46ff));
 
-        if (blockDialog.show) {
+    if (state == State::MENU) {
+        if (blockDialog.type != Dialog::Type::NONE)
             blockDialog.Draw();
-        }
-        else {
-            DrawPanel();
-            DrawConnections();
+        else
+            mainMenu.Draw();
+    } else {
+        if (blockDialog.type == Dialog::Type::CREATE_BLOCK) {
+            blockDialog.Draw();
+        } else {
+            DrawPanel();            DrawConnections();
             DrawComponents();
             DrawText("Symulator v 1.0", GetScreenWidth() - 100, GetScreenHeight() - 20, 10, RAYWHITE);
         }
-
-        EndDrawing();
     }
 
-    int Symulator::MainLoop()
-    {
-        InitWindow(800, 600, "Symulator");
-        SetWindowState(FLAG_WINDOW_RESIZABLE);
-        SetTargetFPS(60);
+    EndDrawing();
+}
 
-        CreateComponentMenu();
+int Symulator::MainLoop()
+{
+    InitWindow(800, 600, "Symulator");
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
+    SetTargetFPS(60);
 
-        // Main game loop
-        while (!WindowShouldClose()) {    // Detect window close button or ESC key
-            Update();
-            Draw();
-        }
+    CreateComponentMenu();
 
-        CloseWindow();
-        return 0;
+    // Main game loop
+    while (!WindowShouldClose()) {    // Detect window close button or ESC key
+        Update();
+        Draw();
     }
+
+    CloseWindow();
+    return 0;
+}
 
 } // namespace sym
 
