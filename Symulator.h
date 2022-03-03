@@ -71,12 +71,14 @@ class Component {
 public:
     enum class Type {
         INPUT1,
-        OUTPUT1,
-        OUTPUT8,
-        GATE,
         INPUT2,
         INPUT4,
         INPUT8,
+        OUTPUT1,
+        OUTPUT2,
+        OUTPUT4,
+        OUTPUT8,
+        GATE,
         BLOCK
     } type;
 
@@ -88,11 +90,11 @@ public:
 
     Component(const Component *comp)
         : rect(comp->rect), prevPos({-1, -1}), text(comp->text), type(comp->type),
-          inConns(comp->inConns), outConn(comp->outConn) {
-        for (auto &in : inConns) {
+          inConns(comp->inConns), outConns(comp->outConns) {
+        for (auto &in : inConns)
             in.parent = this;
-        }
-        outConn.parent = this;
+        for (auto & out : outConns)
+            out.parent = this;
     }
     Component() {}
     Component(std::ifstream& s, Type type): prevPos({ -1, -1 }), type(type) {
@@ -112,7 +114,7 @@ public:
     std::string text;
     bool collide = false;
     std::vector<Connector> inConns;
-    Connector outConn;
+    std::vector<Connector> outConns;
 };
 
 class Gate : public Component {
@@ -135,7 +137,7 @@ public:
             inConns.push_back(Connector(this, {x + 5, y + 5}, Connector::Type::IN));
             inConns.push_back(Connector(this, {x + 5, y + 25}, Connector::Type::IN));
         }
-        outConn = Connector(this, {x + 70, y + 15}, Connector::Type::OUT);
+        outConns.push_back(Connector(this, {x + 70, y + 15}, Connector::Type::OUT));
     }
     Gate(const Gate* gate) : Component(gate), gateType(gate->gateType) {}
     Gate(std::ifstream&, Component::Type type);
@@ -152,7 +154,7 @@ public:
 
     Input(float x, float y, const char* text)
         : Component(x, y, WIDTH, HEIGHT, text, Component::Type::INPUT1) {
-        outConn = Connector(nullptr, {x + 35, y + 15}, Connector::Type::OUT);
+        outConns.push_back(Connector(nullptr, {x + 35, y + 15}, Connector::Type::OUT));
     }
     Input(const Input* in) : Component(in) { text = nextText++; }
     Input(std::ifstream& s, Component::Type type);
@@ -164,17 +166,37 @@ class InputBlock : public Component {
 public:
     static constexpr float WIDTH = 40;
     static constexpr float HEIGHT = 30;
+    static char nextText;
 
-    InputBlock(float x, float y, const char *text)
-        : Component(x, y, WIDTH, HEIGHT, text, Component::Type::INPUT1) {
-        outConn = Connector(nullptr, {x + 35, y + 15}, Connector::Type::OUT);
+    InputBlock(float x, float y, Component::Type type, const char *text)
+        : Component(x, y, WIDTH, HEIGHT, text, type) {
+
+        int numConnectors = 0;
+        switch (type) {
+        case Component::Type::INPUT2:
+            numConnectors = 2;
+            break;
+        case Component::Type::INPUT4:
+            numConnectors = 4;
+            break;
+        case Component::Type::INPUT8:
+            numConnectors = 8;
+            break;
+        }
+
+        for (int i = 0; i < numConnectors; i++) {
+            outConns.push_back(Connector(nullptr, {x + WIDTH - 5, y + 15 + 10 * i}, Connector::Type::OUT));
+        }
     }
-    InputBlock(const InputBlock *in) : Component(in) {}
+    InputBlock(const InputBlock *in) : Component(in), isIcon(false) {
+        char name = nextText++;
+        rect.height = 20 + 10 * outConns.size();
+    }
     InputBlock(std::ifstream&, Type type);
     virtual void Draw() override;
     virtual void Save(std::ofstream& s) override;
 
-    std::vector<Input> inputs;
+    bool isIcon = true;
 };
 
 class Output : public Component {
@@ -197,19 +219,27 @@ class OutputBlock : public Component {
     static constexpr float WIDTH = 40;
     static constexpr float HEIGHT = 30;
 
-    OutputBlock(float x, float y, const char *text)
-        : Component(x, y, WIDTH, HEIGHT, text, Component::Type::OUTPUT8) {
-        inConns.push_back(Connector(nullptr, {x + 5, y + 15}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 25}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 35}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 45}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 55}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 65}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 75}, Connector::Type::IN));
-        inConns.push_back(Connector(nullptr, {x + 5, y + 85}, Connector::Type::IN));
+    OutputBlock(float x, float y, Component::Type type, const char *text)
+        : Component(x, y, WIDTH, HEIGHT, text, type) {
+        int numConnectors = 0;
+        switch (type) {
+        case Component::Type::OUTPUT2:
+            numConnectors = 2;
+            break;
+        case Component::Type::OUTPUT4:
+            numConnectors = 4;
+            break;
+        case Component::Type::OUTPUT8:
+            numConnectors = 8;
+            break;
+        }
+
+        for (int i = 0; i < numConnectors; i++) {
+            inConns.push_back(Connector(nullptr, {x + 5, y + 15 + 10 * i}, Connector::Type::IN));
+        }
     }
     OutputBlock(const OutputBlock *out) : Component(out), isIcon(false) {
-        rect.height = 100;
+        rect.height = 20 + 10 * inConns.size();
     }
     OutputBlock(std::ifstream&, Type type);
     virtual void Draw() override;
@@ -401,6 +431,7 @@ public:
     Component* CheckComponentMenu(const Vector2& pos);
     Component* CheckComponents(const Vector2& pos);
     Component* CheckInputs(const Vector2 &pos);
+    Connector* CheckInputConnectors(const Vector2 &pos);
     Connector* CheckComponentEndpoints(Component* comp, const Vector2 &pos);
     Connector* CheckComponentEndpoints(const Vector2 &pos);
     MenuButton* CheckMenu(const Vector2 &pos);
