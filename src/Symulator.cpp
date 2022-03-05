@@ -7,6 +7,9 @@
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 
+#define GUI_FILE_DIALOG_IMPLEMENTATION
+#include "gui_file_dialog.h"
+
 namespace sym {
 
 char Input::nextText = 'a';
@@ -30,6 +33,20 @@ CompIdx GetComponentIdx(std::vector<Line*>& connections, std::vector<Component*>
         }
     }
     return { -1, Connector::Type::IN, -1 };
+}
+
+void Write(std::ofstream &os, std::string *data) {
+    size_t size = data->size();
+    os.write((const char *)&size, sizeof(size_t));
+    os.write(data->c_str(), data->size());
+}
+
+void Read(std::ifstream &is, std::string *data) {
+    size_t size;
+    is.read((char *)&size, sizeof(size_t));
+    char buffer[255] = {};
+    is.read(buffer, size);
+    data->append(buffer);
 }
 
 bool IsInputComponent(Component *comp) {
@@ -66,6 +83,14 @@ void AddConnection(std::vector<Line *> &connections, Connector *conn1, Connector
     if (conn1->type == conn2->type) {
         printf("Error: Connectors with the same type:%d\n", conn2->type);
         return;
+    }
+    Connector* in = conn1->type == Connector::Type::IN ? conn1 : conn2;
+    // Check if out connection is already connected
+    for (auto& conn : connections) {
+        if (in == conn->end) {
+            printf("Error: IN Connector already connected\n");
+            return;
+        }
     }
     if (conn1->type == Connector::Type::OUT)
         connections.push_back(new Line(conn1, conn2));
@@ -296,9 +321,6 @@ void InputBlock::Draw() {
             Color connColor = out.value ? RED : GRAY;
             DrawCircle(out.pos.x, out.pos.y, 5, connColor);
 
-            if (CheckCollisionPointCircle(pos, out.pos, 5)) {
-                DrawRectangleLines(out.pos.x - 5, out.pos.y - 5, 10, 10, PINK);
-            }
             value += out.value * mod;
             mod *= 2;
         }
@@ -379,9 +401,6 @@ void OutputBlock::Draw() {
             Color connColor = in.value ? RED : GRAY;
             DrawCircle(in.pos.x, in.pos.y, 5, connColor);
 
-            if (CheckCollisionPointCircle(pos, in.pos, 5)) {
-                DrawRectangleLines(in.pos.x - 5, in.pos.y - 5, 10, 10, PINK);
-            }
             value += in.value * mod;
             mod *= 2;
         }
@@ -469,21 +488,26 @@ Block::Block(const Block *block)
     for (auto &line : block->connections) {
         connections.push_back(line);
     }
-    rect.height = std::max<float>(HEIGHT, std::max(numInputs, numOutputs) * 15.0 + 10);
+
     rect.width += 20;
-    printf("New height:%f %d %d\n", rect.height, numInputs, numOutputs);
 
     int inIdx = 0;
     int outIdx = 0;
     for (auto& comp : comps) {
         if (IsInputComponent(comp)) {
-            BlockConnector bconn = {this, {rect.x + 5, 5 + rect.y + 15 * inIdx++}, Connector::Type::IN, &comp->outConns[0]};
-            inputs.push_back(bconn);
+            for (auto& out : comp->outConns) {
+                inConns.push_back({this, {rect.x + 5, 10 + rect.y + 15 * inIdx++}, Connector::Type::IN, &out});
+            }
         } else if (IsOutputComponent(comp)) {
-            BlockConnector bconn = {this, {rect.x + rect.width - 5, 5 + rect.y + 15 * outIdx++}, Connector::Type::OUT, &comp->inConns[0]};
-            outputs.push_back(bconn);
+            for (auto& in : comp->inConns) {
+                outConns.push_back({this, {rect.x + rect.width - 5, 10 + rect.y + 15 * outIdx++}, Connector::Type::OUT, &in});
+            }
         }
     }
+
+    rect.height = std::max<float>(HEIGHT, std::max(inConns.size(), outConns.size()) * 15.0 + 10);
+    printf("New height:%f %d %d\n", rect.height, numInputs, numOutputs);
+    printf("inputs:%d outputs:%d \n", inConns.size(), outConns.size());
 }
 
 Block::Block(std::ifstream& s, Component::Type type) : Component(s, type) {
@@ -523,30 +547,30 @@ Block::Block(std::ifstream& s, Component::Type type) : Component(s, type) {
     Read(s, &numOutputs);
 }
 
-void Block::Calc(std::vector<Connector*>& outConns) {
-    for (auto& in : inputs) {
+void Block::Calc(std::vector<Connector*>& _outConns) {
+    for (auto& in : inConns) {
         if (in.conn)
             in.conn->value = in.value;
     }
     UpdateConnections(comps, connections);
     Connector* result = nullptr;
-    for (auto& out : outputs) {
+    for (auto& out : outConns) {
         if (out.conn) {
             out.value = out.conn->value;
             result = &out;
         }
-        outConns.push_back(&out);
+        _outConns.push_back(&out);
     }
 }
 
 void Block::Move(const Vector2 &delta) {
     rect.x += delta.x;
     rect.y += delta.y;
-    for (auto& in : inputs) {
+    for (auto& in : inConns) {
         in.pos.x += delta.x;
         in.pos.y += delta.y;
     }
-    for (auto &out : outputs) {
+    for (auto &out : outConns) {
         out.pos.x += delta.x;
         out.pos.y += delta.y;
     }
@@ -561,7 +585,7 @@ void Block::Draw() {
         DrawText(TextFormat("%s", text.c_str()), rect.x + 15, rect.y + 5, 18, RAYWHITE);
 
         Vector2 pos = GetMousePosition();
-        for (auto& in : inputs) {
+        for (auto& in : inConns) {
             Color connColor = in.value ? RED : GRAY;
             DrawCircle(in.pos.x, in.pos.y, 5, connColor);
 
@@ -569,7 +593,7 @@ void Block::Draw() {
                 DrawRectangleLines(in.pos.x - 5, in.pos.y - 5, 10, 10, PINK);
             }
         }
-        for (auto& out : outputs) {
+        for (auto& out : outConns) {
             Color connColor = out.value ? RED : GRAY;
             DrawCircle(out.pos.x, out.pos.y, 5, connColor);
 
@@ -583,12 +607,12 @@ void Block::Draw() {
 }
 
 Connector* Block::CheckEndpoints(const Vector2 &pos) {
-    for (auto& in : inputs) {
+    for (auto& in : inConns) {
         if (CheckCollisionPointRec(pos, {in.pos.x - 5, in.pos.y - 5, 10, 10})) {
             return &in;
         }
     }
-    for (auto& out : outputs) {
+    for (auto& out : outConns) {
         if (CheckCollisionPointRec(pos, {out.pos.x - 5, out.pos.y - 5, 10, 10})) {
             return &out;
         }
@@ -615,14 +639,14 @@ void Block::Save(std::ofstream& s) {
         Write(s, &idxEnd);
     }
 
-    size = inputs.size();
+    size = inConns.size();
     Write(s, &size);
-    for (auto& input : inputs)
+    for (auto& input : inConns)
         input.Save(s);
 
-    size = outputs.size();
+    size = outConns.size();
     Write(s, &size);
-    for (auto& output : outputs)
+    for (auto& output : outConns)
         output.Save(s);
 
     Write(s, &color);
@@ -635,15 +659,18 @@ Block::~Block() {
     printf("Block dtor num comps:%d\n", comps.size());
     for (auto &comp : comps) {
         printf("Block dtor delete comp\n");
-        delete comp;
-        comp = nullptr;
+        // FIXME:
+        // delete comp;
+        // comp = nullptr;
     }
     comps.clear();
 
+    printf("Block dtor num connections:%d\n", connections.size());
     for (auto &line : connections) {
         printf("Block dtor delete comp\n");
-        delete line;
-        line = nullptr;
+        // FIXME:
+        // delete line;
+        // line = nullptr;
     }
     connections.clear();
 }
@@ -686,7 +713,7 @@ void MainMenu::Draw() {
         Color bg = selected ? ORANGE : DARKBLUE;
         Color fg = selected ? DARKBLUE : ORANGE;
         DrawRectangleRec(button.rec, bg);
-        DrawText(button.text, button.rec.x + 10, button.rec.y, 20, fg);
+        DrawText(button.text, button.rec.x + 20, button.rec.y + 25, 40, fg);
     }
 }
 
@@ -709,34 +736,61 @@ void Dialog::Draw() {
     Vector2 pos = { (float)GetScreenWidth() / 2 - width / 2, (float)GetScreenHeight() / 2 - height / 2 };
 
     if (type == Type::CREATE_BLOCK) {
-        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Create Block", "Select name for a block", "Ok;Cancel", name);
+        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Create Block", "Select name for a block", "Ok;Cancel", blockName);
         color = GuiColorPicker({ pos.x + width, pos.y, 20, height }, color);
-        
 
         if (result >= 0) {
             type = Type::NONE;
             if (result == 1)
-                parent->CreateBlock(name, color);
+                parent->CreateBlock(blockName, color);
         }
     } else if (type == Type::NEW) {
-        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Create project", "Give your project a name","Ok;Cancel", name);
+        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Create Project", "Give your project a name","Ok;Cancel", projectName);
 
         if (result >= 0) {
             type = Type::NONE;
             if (result == 1) {
-                parent->name = name;
+                parent->name += GetWorkingDirectory();
+                parent->name += "\\projects\\";
+                parent->name += projectName;
+                parent->name += ".psf";
                 parent->state = Symulator::State::ACTIVE;
             }
         }
     } else {
-        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Load project", "Select your project", "Ok;Cancel", name);
+        GuiFileDialogState fileDialogState = InitGuiFileDialog(GetScreenWidth() / 1.5, GetScreenHeight() / 1.7, "Select project", false);
+        bool closeWindow = false;
+        fileDialogState.fileDialogActive = true;
+        char fileNameToLoad[50] = { 0 };
 
-        if (result >= 0) {
-            type = Type::NONE;
-            if (result == 1) {
-                parent->LoadProject(name);
+        while (!WindowShouldClose() && !closeWindow) {
+            if (!fileDialogState.fileDialogActive)
+                closeWindow = true;
+
+            if (fileDialogState.SelectFilePressed) {
+                if (IsFileExtension(fileDialogState.fileNameText, ".psf")) {
+                    parent->name += fileDialogState.dirPathText;
+                    parent->name += "\\";
+                    parent->name += fileDialogState.fileNameText;
+                    parent->LoadProject();
+                }
+                fileDialogState.SelectFilePressed = false;
             }
+
+            BeginDrawing();
+            ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+
+            DrawText(fileNameToLoad, 208, GetScreenHeight() - 20, 10, GRAY);
+
+            if (fileDialogState.fileDialogActive) 
+                GuiLock();
+
+            GuiUnlock();
+            GuiFileDialog(&fileDialogState);
+
+            EndDrawing();
         }
+        type = Type::NONE;
     }
 }
 
@@ -759,6 +813,7 @@ void Symulator::DrawPanel() {
     DrawRectangleLines(0, 0, GetScreenWidth(), GetScreenHeight(), YELLOW);
 
     DrawComponentMenu();
+    DrawText(TextFormat("[ %s ]", name.c_str()), 5, 45, 16, YELLOW);
     menu.Draw();
 }
 
@@ -792,14 +847,13 @@ void Symulator::CreateComponentMenu() {
     x += Gate::WIDTH + 20;
     compMenu.push_back(new Input(x, 5, "I1"));
     x += Input::WIDTH + 20;
-    compMenu.push_back(new Output(x, 5, "O1"));
-
-    x += Input::WIDTH + 20;
     compMenu.push_back(new InputBlock(x, 5, Component::Type::INPUT2, "I2"));
     x += Input::WIDTH + 20;
     compMenu.push_back(new InputBlock(x, 5, Component::Type::INPUT4, "I4"));
     x += Input::WIDTH + 20;
     compMenu.push_back(new InputBlock(x, 5, Component::Type::INPUT8, "I8"));
+    x += Input::WIDTH + 20;
+    compMenu.push_back(new Output(x, 5, "O1"));
     x += Input::WIDTH + 20;
     compMenu.push_back(new OutputBlock(x, 5, Component::Type::OUTPUT2, "O2"));
     x += Input::WIDTH + 20;
@@ -900,9 +954,9 @@ void Symulator::DeleteComponent(Component* comp) {
 }
 
 void Symulator::DeleteBlock(Block* comp) {
-    for (auto &in : comp->inputs)
+    for (auto &in : comp->inConns)
         DeleteConnection(&in);
-    for (auto &out : comp->outputs)
+    for (auto &out : comp->outConns)
         DeleteConnection(&out);
     comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
 }
@@ -1114,29 +1168,22 @@ void Symulator::WriteProjectData(std::ofstream& s) {
     Write(s, &numBlocks);
 }
 
-void Symulator::LoadProject(const char* fileName) {
-    if (!DirectoryExists("projects")) {
-        printf("No projects");
-    } else {
-        std::ifstream loadFile(fileName, std::ios_base::binary);
-        if (loadFile.is_open()) {
-            ReadProjectData(loadFile);
+void Symulator::LoadProject() {
+    std::ifstream loadFile(name, std::ios_base::binary);
+    if (loadFile.is_open()) {
+        ReadProjectData(loadFile);
 
-            loadFile.close();
-            printf("Load complete\n");
-            state = State::ACTIVE;
-        }
-        else {
-            printf("Unable to open file");
-        }
+        loadFile.close();
+        printf("Load complete\n");
+        state = State::ACTIVE;
+    }
+    else {
+        printf("Unable to open file");
     }
 }
 
-void Symulator::SaveProject(const char* fileName) {
-    if (!DirectoryExists("saves")) {
-        std::system("mkdir projects");
-    }
-    std::ofstream saveFile(fileName, std::ios_base::binary);
+void Symulator::SaveProject() {
+    std::ofstream saveFile(name, std::ios_base::binary);
     if (saveFile.is_open()) {
         WriteProjectData(saveFile);
 
@@ -1184,7 +1231,7 @@ void Symulator::Update() {
                     break;
                 case MenuOption::SAVE:
                     printf("Save selected\n");
-                    SaveProject(name);
+                    SaveProject();
                     break;
                 case MenuOption::CLEAR:
                     printf("Clear selected\n");
@@ -1305,7 +1352,8 @@ void Symulator::Draw() {
         if (blockDialog.type == Dialog::Type::CREATE_BLOCK) {
             blockDialog.Draw();
         } else {
-            DrawPanel();            DrawConnections();
+            DrawPanel();
+            DrawConnections();
             DrawComponents();
             DrawText("Symulator v 1.0", GetScreenWidth() - 100, GetScreenHeight() - 20, 10, RAYWHITE);
         }

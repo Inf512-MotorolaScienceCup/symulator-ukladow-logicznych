@@ -11,13 +11,7 @@ template <typename T>
 void Write(std::ofstream& os, T* data) {
     os.write((const char*)data, sizeof(T));
 }
-
-template <>
-void Write(std::ofstream& os, std::string* data) {
-    size_t size = data->size();
-    os.write((const char*)&size, sizeof(size_t));
-    os.write(data->c_str(), data->size());
-}
+void Write(std::ofstream &os, std::string *data);
 
 template <typename T>
 void Read(std::ifstream& is, T* data) {
@@ -25,14 +19,7 @@ void Read(std::ifstream& is, T* data) {
     is.read(buffer, sizeof(T));
     *data = *(T*)buffer;
 }
-template <>
-void Read(std::ifstream& is, std::string* data) {
-    size_t size;
-    is.read((char*)&size, sizeof(size_t));
-    char buffer[255] = {};
-    is.read(buffer, size);
-    data->append(buffer);
-}
+void Read(std::ifstream& is, std::string* data);
 
 class Gate;
 class Component;
@@ -48,9 +35,13 @@ public:
     Vector2 pos;
     bool value = false;
     Component* parent;
-    Connector(Component* parent, Vector2 pos, Type type): parent(parent), pos(pos), type(type) {}
-    Connector(Vector2 pos, Type type) : parent(nullptr), pos(pos), type(type) {}
-    Connector() : parent(nullptr), pos({0, 0}), type(Type::IN) {}
+    Connector* conn; // bypass
+
+    Connector(Component* parent, Vector2 pos, Type type): parent(parent), pos(pos), type(type), conn(nullptr) {}
+    Connector(Component *parent, Vector2 pos, Type type, Connector* conn)
+        : parent(parent), pos(pos), type(type), conn(conn) {}
+    Connector(Vector2 pos, Type type) : parent(nullptr), pos(pos), type(type), conn(nullptr) {}
+    Connector() : parent(nullptr), pos({0, 0}), type(Type::IN), conn(nullptr) {}
     Connector(std::ifstream& s, Component* parent): parent(parent) {
         Read(s, &type);
         Read(s, &pos);
@@ -91,9 +82,9 @@ public:
     Component(const Component *comp)
         : rect(comp->rect), prevPos({-1, -1}), text(comp->text), type(comp->type),
           inConns(comp->inConns), outConns(comp->outConns) {
-        for (auto &in : inConns)
+        for (auto& in : inConns)
             in.parent = this;
-        for (auto & out : outConns)
+        for (auto& out : outConns)
             out.parent = this;
     }
     Component() {}
@@ -171,6 +162,10 @@ public:
     InputBlock(float x, float y, Component::Type type, const char *text)
         : Component(x, y, WIDTH, HEIGHT, text, type) {
 
+        outConns.push_back(Connector(nullptr, {x + WIDTH - 5, y + 15}, Connector::Type::OUT));
+    }
+    InputBlock(const InputBlock *in) : Component(in), isIcon(false) {
+
         int numConnectors = 0;
         switch (type) {
         case Component::Type::INPUT2:
@@ -184,13 +179,11 @@ public:
             break;
         }
 
-        for (int i = 0; i < numConnectors; i++) {
-            outConns.push_back(Connector(nullptr, {x + WIDTH - 5, y + 15 + 10 * i}, Connector::Type::OUT));
+        for (int i = 1; i < numConnectors; i++) {
+            outConns.push_back(Connector(nullptr, {rect.x + WIDTH - 5, rect.y + 15 + 15 * i}, Connector::Type::OUT));
         }
-    }
-    InputBlock(const InputBlock *in) : Component(in), isIcon(false) {
         char name = nextText++;
-        rect.height = 20 + 10 * outConns.size();
+        rect.height = 15 + 15 * outConns.size();
     }
     InputBlock(std::ifstream&, Type type);
     virtual void Draw() override;
@@ -221,6 +214,10 @@ class OutputBlock : public Component {
 
     OutputBlock(float x, float y, Component::Type type, const char *text)
         : Component(x, y, WIDTH, HEIGHT, text, type) {
+        // Only one - because only this is needed in menu
+        inConns.push_back(Connector(nullptr, {x + 5, y + 15}, Connector::Type::IN));
+    }
+    OutputBlock(const OutputBlock *out) : Component(out), isIcon(false) {
         int numConnectors = 0;
         switch (type) {
         case Component::Type::OUTPUT2:
@@ -234,12 +231,11 @@ class OutputBlock : public Component {
             break;
         }
 
-        for (int i = 0; i < numConnectors; i++) {
-            inConns.push_back(Connector(nullptr, {x + 5, y + 15 + 10 * i}, Connector::Type::IN));
+        // First already added
+        for (int i = 1; i < numConnectors; i++) {
+            inConns.push_back(Connector(nullptr, {rect.x + 5, rect.y + 15 + 15 * i}, Connector::Type::IN));
         }
-    }
-    OutputBlock(const OutputBlock *out) : Component(out), isIcon(false) {
-        rect.height = 20 + 10 * inConns.size();
+        rect.height = 15 + 15 * inConns.size();
     }
     OutputBlock(std::ifstream&, Type type);
     virtual void Draw() override;
@@ -278,8 +274,8 @@ public:
     std::vector<Component*> comps;
     std::vector<Line*> connections;
 
-    std::vector<BlockConnector> inputs;
-    std::vector<BlockConnector> outputs;
+    // std::vector<BlockConnector> inputs;
+    // std::vector<BlockConnector> outputs;
 
     Color color;
     bool isIcon = true;
@@ -406,7 +402,8 @@ public:
     Symulator* parent;
     Type type = Type::NONE;
     int result;
-    char name[256] = "BLK1";
+    char blockName[256] = "BLK1";
+    char projectName[256] = "Project1";
     bool cooldown;
     Color color = GREEN;
 };
@@ -452,8 +449,8 @@ public:
 
     void ReadProjectData(std::ifstream&);
     void WriteProjectData(std::ofstream&);
-    void LoadProject(const char*);
-    void SaveProject(const char*);
+    void LoadProject();
+    void SaveProject();
 
 
     void Update();
@@ -474,7 +471,7 @@ public:
     float compMenuNextX;
     int numBlocks = 0;
     Dialog blockDialog;
-    char* name;
+    std::string name;
 };
 
 } // namespace sym
