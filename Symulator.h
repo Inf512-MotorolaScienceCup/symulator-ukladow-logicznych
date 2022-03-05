@@ -452,8 +452,8 @@ public:
 
     void ReadProjectData(std::ifstream&);
     void WriteProjectData(std::ofstream&);
-    void LoadProject(const char*);
-    void SaveProject(const char*);
+    void LoadProject();
+    void SaveProject();
 
 
     void Update();
@@ -474,7 +474,7 @@ public:
     float compMenuNextX;
     int numBlocks = 0;
     Dialog blockDialog;
-    char* name;
+    std::string name;
 };
 
 } // namespace sym

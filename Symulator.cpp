@@ -7,6 +7,9 @@
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
 
+#define GUI_FILE_DIALOG_IMPLEMENTATION
+#include "gui_file_dialog.h"
+
 namespace sym {
 
 char Input::nextText = 'a';
@@ -686,7 +689,7 @@ void MainMenu::Draw() {
         Color bg = selected ? ORANGE : DARKBLUE;
         Color fg = selected ? DARKBLUE : ORANGE;
         DrawRectangleRec(button.rec, bg);
-        DrawText(button.text, button.rec.x + 10, button.rec.y, 20, fg);
+        DrawText(button.text, button.rec.x + 20, button.rec.y + 25, 40, fg);
     }
 }
 
@@ -724,19 +727,47 @@ void Dialog::Draw() {
         if (result >= 0) {
             type = Type::NONE;
             if (result == 1) {
-                parent->name = name;
+                parent->name += GetWorkingDirectory();
+                parent->name += "\\projects\\";
+                parent->name += name;
+                parent->name += ".psf";
                 parent->state = Symulator::State::ACTIVE;
             }
         }
     } else {
-        result = GuiTextInputBox({ pos.x, pos.y, width, height }, "Load project", "Select your project", "Ok;Cancel", name);
+        GuiFileDialogState fileDialogState = InitGuiFileDialog(GetScreenWidth() / 1.5, GetScreenHeight() / 1.7, "Select project", false);
+        bool closeWindow = false;
+        fileDialogState.fileDialogActive = true;
+        char fileNameToLoad[50] = { 0 };
 
-        if (result >= 0) {
-            type = Type::NONE;
-            if (result == 1) {
-                parent->LoadProject(name);
+        while (!WindowShouldClose() && !closeWindow) {
+            if (!fileDialogState.fileDialogActive)
+                closeWindow = true;
+
+            if (fileDialogState.SelectFilePressed) {
+                if (IsFileExtension(fileDialogState.fileNameText, ".psf")) {
+                    parent->name += fileDialogState.dirPathText;
+                    parent->name += "\\";
+                    parent->name += fileDialogState.fileNameText;
+                    parent->LoadProject();
+                }
+                fileDialogState.SelectFilePressed = false;
             }
+
+            BeginDrawing();
+            ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+
+            DrawText(fileNameToLoad, 208, GetScreenHeight() - 20, 10, GRAY);
+
+            if (fileDialogState.fileDialogActive) 
+                GuiLock();
+
+            GuiUnlock();
+            GuiFileDialog(&fileDialogState);
+
+            EndDrawing();
         }
+        type = Type::NONE;
     }
 }
 
@@ -1114,29 +1145,22 @@ void Symulator::WriteProjectData(std::ofstream& s) {
     Write(s, &numBlocks);
 }
 
-void Symulator::LoadProject(const char* fileName) {
-    if (!DirectoryExists("projects")) {
-        printf("No projects");
-    } else {
-        std::ifstream loadFile(fileName, std::ios_base::binary);
-        if (loadFile.is_open()) {
-            ReadProjectData(loadFile);
+void Symulator::LoadProject() {
+    std::ifstream loadFile(name, std::ios_base::binary);
+    if (loadFile.is_open()) {
+        ReadProjectData(loadFile);
 
-            loadFile.close();
-            printf("Load complete\n");
-            state = State::ACTIVE;
-        }
-        else {
-            printf("Unable to open file");
-        }
+        loadFile.close();
+        printf("Load complete\n");
+        state = State::ACTIVE;
+    }
+    else {
+        printf("Unable to open file");
     }
 }
 
-void Symulator::SaveProject(const char* fileName) {
-    if (!DirectoryExists("saves")) {
-        std::system("mkdir projects");
-    }
-    std::ofstream saveFile(fileName, std::ios_base::binary);
+void Symulator::SaveProject() {
+    std::ofstream saveFile(name, std::ios_base::binary);
     if (saveFile.is_open()) {
         WriteProjectData(saveFile);
 
@@ -1184,7 +1208,7 @@ void Symulator::Update() {
                     break;
                 case MenuOption::SAVE:
                     printf("Save selected\n");
-                    SaveProject(name);
+                    SaveProject();
                     break;
                 case MenuOption::CLEAR:
                     printf("Clear selected\n");
