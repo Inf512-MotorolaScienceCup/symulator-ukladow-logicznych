@@ -1,9 +1,13 @@
 @echo off
 title Build
+
+if exist ..\CMakeLists.txt cd ..
+	
 mkdir out
 cd out
 cmake ..
 cmake --build .
+
 pause
 
 :: 32bit build
