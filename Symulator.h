@@ -9,14 +9,12 @@ namespace sym {
 
 template <typename T>
 void Write(std::ofstream& os, T* data) {
-    printf("size:%d\n", sizeof(T));
     os.write((const char*)data, sizeof(T));
 }
 void Write(std::ofstream &os, std::string *data);
 
 template <typename T>
 void Read(std::ifstream& is, T* data) {
-    printf("size:%d\n", sizeof(T));
     char buffer[20];
     is.read(buffer, sizeof(T));
     *data = *(T*)buffer;

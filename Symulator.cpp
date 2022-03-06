@@ -807,6 +807,7 @@ void Dialog::Draw() {
         if (result >= 0) {
             type = Type::NONE;
             if (result == 1) {
+                parent->name.clear();
                 parent->name += GetWorkingDirectory();
                 parent->name += "\\projects\\";
                 parent->name += projectName;
@@ -976,7 +977,6 @@ void Symulator::DeleteConnection(Connector* conn) {
     std::list<int> idxToDelete;
     for (int i = 0; i < block->connections.size(); i++) {
         if (block->connections[i]->start == conn || block->connections[i]->end == conn) {
-            printf("Connection Delete %d\n", i);
             if (conn->type == Connector::Type::OUT && nextList.size() == 0) {
                 nextList = GetNextConnector(block->connections, conn);
             }
@@ -1156,7 +1156,7 @@ void Symulator::ReadProjectData(std::ifstream& s) {
     ReadComponents(s, block->comps);
 
     Read(s, &size);
-    //printf("Connections:%zd\n", size);
+
     block->connections.reserve(size);
     for (int i = 0; i < size; i++) {
         Connector *start = Read(s, block->connections, block->comps);
@@ -1175,13 +1175,13 @@ void Symulator::WriteProjectData(std::ofstream& s) {
 
     size = block->comps.size();
     Write(s, &size);
-    //printf("Comps:%zd\n", size);
+
     for (auto& comp : block->comps)
         comp->Save(s);
 
     size = block->connections.size();
     Write(s, &size);
-    //printf("Connections:%zd\n", size);
+
     for (auto& connection : block->connections) {
         Write(s, connection->start, block->connections, block->comps);
         Write(s, connection->end, block->connections, block->comps);
@@ -1275,6 +1275,7 @@ void Symulator::Update() {
                     break;
                 case MenuOption::CLOSE:
                     ClearProject();
+                    name.clear();
                     state = State::MENU;
                     break;
                 }
