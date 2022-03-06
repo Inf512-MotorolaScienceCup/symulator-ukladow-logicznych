@@ -6,7 +6,6 @@
 #include "raylib.h"
 
 namespace sym {
-
 template <typename T>
 void Write(std::ofstream& os, T* data) {
     os.write((const char*)data, sizeof(T));
@@ -451,7 +450,6 @@ public:
     void WriteProjectData(std::ofstream&);
     void LoadProject();
     void SaveProject();
-
 
     void Update();
     void Draw();

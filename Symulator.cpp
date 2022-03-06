@@ -14,6 +14,7 @@ namespace sym {
 
 char Input::nextText = 'a';
 char InputBlock::nextText = 'A';
+Font font;
 
 struct CompIdx {
     int compIdx;
@@ -253,7 +254,7 @@ void Gate::Draw() {
 
     DrawLineEx({x + 60, y + 15}, {x + 70, y + 15}, 3.0, BLUE);
     DrawCircle(x + 70, y + 15, 5, outConns[0].value ? RED : GRAY);
-    DrawText(text.c_str(), x + 20, y + 10, 15, RAYWHITE);
+    DrawTextEx(font, text.c_str(), { x + 23, y + 7 }, 15, 1, RAYWHITE);
 
     Component::Draw();
 }
@@ -282,7 +283,7 @@ void Input::Draw() {
     DrawRectangle(rect.x, rect.y, 20, HEIGHT, color);
     DrawTriangle({rect.x + 20, rect.y}, {rect.x + 20, rect.y + HEIGHT}, {rect.x + 30, rect.y + HEIGHT / 2}, color);
     DrawCircle(outConns[0].pos.x, outConns[0].pos.y, 5, color);
-    DrawText(TextFormat("%.2s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
+    DrawTextEx(font, TextFormat("%.2s", text.c_str()), { rect.x + 5, rect.y + 5 }, 18, 1, RAYWHITE);
 
     Component::Draw();
 }
@@ -310,7 +311,7 @@ void InputBlock::Draw() {
         DrawTriangle({rect.x + 20, rect.y}, {rect.x + 20, rect.y + HEIGHT},
                      {rect.x + 30, rect.y + HEIGHT / 2}, color);
         DrawCircle(outConns[0].pos.x, outConns[0].pos.y, 5, color);
-        DrawText(TextFormat("%.2s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
+        DrawTextEx(font, TextFormat("%.2s", text.c_str()), { rect.x + 5, rect.y + 5 }, 18, 1, RAYWHITE);
     } else {
         int value = 0;
         int mod = 1;
@@ -327,7 +328,7 @@ void InputBlock::Draw() {
         float saturation = value; // 0.5 (1) - 1.0 (255)
         Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
         DrawRectangleRounded({rect.x, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
-        DrawText(TextFormat("%d", value), rect.x + 15, rect.y + 5, 16, RAYWHITE);
+        DrawTextEx(font, TextFormat("%d", value), { rect.x + 15, rect.y + 5 }, 16, 1, RAYWHITE);
     }
 
     Component::Draw();
@@ -359,7 +360,7 @@ void Output::Draw() {
     DrawRectangle(rect.x + 20, rect.y, 20, HEIGHT, color);
     DrawTriangle({rect.x + 20, rect.y}, {rect.x + 10, rect.y + HEIGHT / 2 }, {rect.x + 20, rect.y + HEIGHT}, color);
     DrawCircle(inConns[0].pos.x, inConns[0].pos.y, 5, color);
-    DrawText(TextFormat("%.2s", text.c_str()), rect.x + 20, rect.y + 5, 18, RAYWHITE);
+    DrawTextEx(font, TextFormat("%.2s", text.c_str()), { rect.x + 18, rect.y + 5 }, 18, 1, RAYWHITE);
 
     Component::Draw();
 }
@@ -391,7 +392,7 @@ void OutputBlock::Draw() {
         DrawTriangle({rect.x + 20, rect.y}, {rect.x + 10, rect.y + HEIGHT / 2},
                      {rect.x + 20, rect.y + HEIGHT}, color);
         DrawCircle(inConns[0].pos.x, inConns[0].pos.y, 5, color);
-        DrawText(TextFormat("%.2s", text.c_str()), rect.x + 20, rect.y + 5, 18, RAYWHITE);
+        DrawTextEx(font, TextFormat("%.2s", text.c_str()), { rect.x + 18, rect.y + 5 }, 18, 1, RAYWHITE);
     } else {
         int value = 0;
         int mod = 1;
@@ -407,7 +408,7 @@ void OutputBlock::Draw() {
         float saturation = value; // 0.5 (1) - 1.0 (255)
         Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
         DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
-        DrawText(TextFormat("%d", value), rect.x + 15, rect.y + 5, 16, RAYWHITE);
+        DrawTextEx(font, TextFormat("%d", value), { rect.x + 20, rect.y + 5 }, 16, 1, RAYWHITE);
     }
 
     Component::Draw();
@@ -579,10 +580,10 @@ void Block::Move(const Vector2 &delta) {
 void Block::Draw() {
     if (isIcon) {
         DrawRectangleRounded({rect.x, rect.y, rect.width, rect.height}, 0.3, 5, color);
-        DrawText(TextFormat("%s", text.c_str()), rect.x + 5, rect.y + 5, 18, RAYWHITE);
+        DrawTextEx(font, TextFormat("%s", text.c_str()), { rect.x + 3, rect.y + 5 }, 18, 1, RAYWHITE);
     } else {
         DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 2 * 10, rect.height}, 0.3, 5, color);
-        DrawText(TextFormat("%s", text.c_str()), rect.x + 15, rect.y + 5, 18, RAYWHITE);
+        DrawTextEx(font, TextFormat("%s", text.c_str()), { rect.x + 12, rect.y + 5 }, 18, 1, RAYWHITE);
 
         Vector2 pos = GetMousePosition();
         for (auto& in : inConns) {
@@ -688,7 +689,7 @@ void MenuPanel::Draw() {
         Color bg = selected ? ORANGE : DARKBLUE;
         Color fg = selected ? DARKBLUE : ORANGE;
         DrawRectangleRec(button.rec, bg);
-        DrawText(button.text, button.rec.x + 10, button.rec.y, 20, fg);
+        DrawTextEx(font, button.text, { button.rec.x + 20, button.rec.y }, 20, 1, fg);
     }
 }
 
@@ -713,7 +714,7 @@ void MainMenu::Draw() {
         Color bg = selected ? ORANGE : DARKBLUE;
         Color fg = selected ? DARKBLUE : ORANGE;
         DrawRectangleRec(button.rec, bg);
-        DrawText(button.text, button.rec.x + 20, button.rec.y + 25, 40, fg);
+        DrawTextEx(font, button.text, { button.rec.x + 45, button.rec.y + 25 }, 40, 1, fg);
     }
 }
 
@@ -780,7 +781,7 @@ void Dialog::Draw() {
             BeginDrawing();
             ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
 
-            DrawText(fileNameToLoad, 208, GetScreenHeight() - 20, 10, GRAY);
+            DrawTextEx(font, fileNameToLoad, { 208.0f, GetScreenHeight() - 20.0f }, 10, 1, GRAY);
 
             if (fileDialogState.fileDialogActive) 
                 GuiLock();
@@ -813,7 +814,7 @@ void Symulator::DrawPanel() {
     DrawRectangleLines(0, 0, GetScreenWidth(), GetScreenHeight(), YELLOW);
 
     DrawComponentMenu();
-    DrawText(TextFormat("[ %s ]", name.c_str()), 5, 45, 16, YELLOW);
+    DrawTextEx(font, TextFormat("[ %s ]", name.c_str()), { 5, 45 }, 16, 1, YELLOW);
     menu.Draw();
 }
 
@@ -872,7 +873,7 @@ void Symulator::CreateBlock(const char* name, Color color) {
 }
 
 void Symulator::Log(const char* text) {
-    DrawText(text, 10, GetScreenHeight() - 20, 10, RAYWHITE);
+    DrawTextEx(font, text, { 10.0f, GetScreenHeight() - 20.0f }, 10, 1, RAYWHITE);
 }
 
 void Symulator::DrawComponentMenu() {
@@ -1355,7 +1356,8 @@ void Symulator::Draw() {
             DrawPanel();
             DrawConnections();
             DrawComponents();
-            DrawText("Symulator v 1.0", GetScreenWidth() - 100, GetScreenHeight() - 20, 10, RAYWHITE);
+            DrawTextEx(font, "LMB + Ctrl: Delete", { GetScreenWidth() - 150.0f, GetScreenHeight() - 35.0f }, 15, 1, RAYWHITE);
+            DrawTextEx(font, "RMB: Change value", { GetScreenWidth() - 150.0f, GetScreenHeight() - 20.0f }, 15, 1, RAYWHITE);
         }
     }
 
@@ -1368,6 +1370,9 @@ int Symulator::MainLoop()
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
+    font = LoadFontEx("res/Fredoka-SemiBold.ttf", 40, 0, 0);
+    SetTextureFilter(font.texture, TEXTURE_FILTER_BILINEAR);
+
     CreateComponentMenu();
 
     // Main game loop
@@ -1376,6 +1381,7 @@ int Symulator::MainLoop()
         Draw();
     }
 
+    UnloadFont(font);
     CloseWindow();
     return 0;
 }
