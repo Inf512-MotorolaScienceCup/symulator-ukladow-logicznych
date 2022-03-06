@@ -26,20 +26,43 @@ CompIdx GetComponentIdx(std::vector<Line*>& connections, std::vector<Component*>
     for (int i = 0; i < comps.size(); i++) {
         for (int j = 0; j < comps[i]->outConns.size(); j++) {
             if (&comps[i]->outConns[j] == conn)
-                return { i, Connector::Type::OUT, 0 };
+                return { i, Connector::Type::OUT, j };
         }
         for (int j = 0; j < comps[i]->inConns.size(); j++) {
             if (&comps[i]->inConns[j] == conn)
                 return { i, Connector::Type::IN, j };
         }
     }
+    TraceLog(LOG_INFO, "Error: Component index not found\n");
     return { -1, Connector::Type::IN, -1 };
 }
 
 void Write(std::ofstream &os, std::string *data) {
+    //printf("[Write] %s\n", data->c_str());
     size_t size = data->size();
     os.write((const char *)&size, sizeof(size_t));
     os.write(data->c_str(), data->size());
+}
+
+void Write(std::ofstream &s, Connector *conn, std::vector<Line *> &connections,
+           std::vector<Component *> &comps) {
+    CompIdx idx = GetComponentIdx(connections, comps, conn);
+    Write(s, &idx);
+
+    printf("(%d %d) (%d)\n", idx.compIdx, idx.connIdx, idx.type);
+
+    if (conn->conn) printf("Bypass !!!\n");
+
+ /*
+    int isBypass = conn->conn != nullptr;
+    Write(s, &isBypass);
+
+    if (isBypass) {
+        printf("Bypass !!!\n");
+        CompIdx idx = GetComponentIdx(connections, comps, conn);
+        Write(s, &idx);
+    }
+*/
 }
 
 void Read(std::ifstream &is, std::string *data) {
@@ -48,6 +71,69 @@ void Read(std::ifstream &is, std::string *data) {
     char buffer[255] = {};
     is.read(buffer, size);
     data->append(buffer);
+    //printf("[Read] %s\n", data->c_str());
+}
+
+Connector* Read(std::ifstream &s, std::vector<Line *> &connections, std::vector<Component *> &comps) {
+    CompIdx idx;
+    Read(s, &idx);
+
+    Connector* result = nullptr;
+    if (idx.type == Connector::Type::OUT) {
+        result = &comps[idx.compIdx]->outConns[idx.connIdx];
+    } else {
+        result = &comps[idx.compIdx]->inConns[idx.connIdx];
+    }
+
+    printf("(%d %d) (%d)\n", idx.compIdx, idx.connIdx, idx.type);
+/*
+    int isBypass;
+    Read(s, &isBypass);
+
+    if (isBypass) {
+        printf("Bypass !!!\n");
+        Read(s, &idx);
+        result->conn = &comps[idx.compIdx]->outConns[idx.connIdx];
+    }
+*/
+    return result;
+}
+
+void ReadComponents(std::ifstream& s, std::vector<Component*>& comps) {
+    size_t size;
+    Read(s, &size);
+    printf("Comps:%zd\n", size);
+    comps.reserve(size);
+    for (int i = 0; i < size; i++) {
+        Component::Type type;
+        Read(s, &type);
+        switch (type) {
+        case Component::Type::INPUT1:
+            comps.push_back(new Input(s, type));
+            break;
+        case Component::Type::OUTPUT1:
+            comps.push_back(new Output(s, type));
+            break;
+        case Component::Type::OUTPUT2:
+        case Component::Type::OUTPUT4:
+        case Component::Type::OUTPUT8:
+            comps.push_back(new OutputBlock(s, type));
+            break;
+        case Component::Type::GATE:
+            comps.push_back(new Gate(s, type));
+            break;
+        case Component::Type::INPUT2:
+        case Component::Type::INPUT4:
+        case Component::Type::INPUT8:
+            comps.push_back(new InputBlock(s, type));
+            break;
+        case Component::Type::BLOCK:
+            comps.push_back(new Block(s, type));
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 bool IsInputComponent(Component *comp) {
@@ -128,6 +214,43 @@ void UpdateConnections(std::vector<Component*> comps, std::vector<Line *> &conne
     }
 }
 
+Connector::Connector(std::ifstream &s, Component *parent) : parent(parent) {
+    Read(s, &type);
+    Read(s, &pos);
+    Read(s, &value);
+
+    int isBypass;
+    Read(s, &isBypass);
+
+    if (isBypass) {
+        // Only blocks can have bypass connector
+        Block* block = static_cast<Block*>(parent);
+        conn = Read(s, block->connections, block->comps);
+        printf("Bypass handled\n");
+    }
+    else {
+        conn = nullptr;
+    }
+    printf("Connector::Create type:%d pos:(%f %f)\n", type, pos.x, pos.y);
+}
+
+void Connector::Save(std::ofstream &s) {
+    Write(s, &type);
+    Write(s, &pos);
+    Write(s, &value);
+    int isBypass = conn != nullptr;
+    Write(s, &isBypass);
+
+    if (isBypass) {
+        // Only blocks can have bypass connector
+        Block* block = static_cast<Block*>(parent);
+        CompIdx idx = GetComponentIdx(block->connections, block->comps, conn);
+        printf("Bypass handled\n");
+        Write(s, &idx);
+    }
+    printf("Connector::Save type:%d pos:(%f %f)\n", type, pos.x, pos.y);
+}
+
 Component* Component::Clone(Component* comp) {
     switch (comp->type) {
     case Component::Type::INPUT1:
@@ -204,6 +327,12 @@ Connector* Component::CheckEndpoints(const Vector2& pos) {
     return nullptr;
 }
 
+void Component::Save(std::ofstream &s) {
+    Write(s, &type);
+    Write(s, &rect);
+    Write(s, &text);
+}
+
 Gate::Gate(std::ifstream& s, Component::Type type): Component(s, type) {
     Read(s, &gateType);
 
@@ -211,8 +340,8 @@ Gate::Gate(std::ifstream& s, Component::Type type): Component(s, type) {
     Read(s, &size);
     for (int i = 0; i < size; i++)
         inConns.emplace_back(s, this);
-    
-    outConns[0] = Connector(s, this);
+
+    outConns.emplace_back(s, this);
 }
 
 void Gate::Calc(std::vector<Connector*>& _outConns) {
@@ -260,9 +389,7 @@ void Gate::Draw() {
 }
 
 void Gate::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, &text);
+    Component::Save(s);
     Write(s, &gateType);
 
     size_t size = inConns.size();
@@ -274,7 +401,7 @@ void Gate::Save(std::ofstream& s) {
 }
 
 Input::Input(std::ifstream& s, Component::Type type): Component(s, type) {
-    outConns[0] = Connector(s, this);
+    outConns.emplace_back(s, this);
 }
 
 void Input::Draw() {
@@ -289,9 +416,7 @@ void Input::Draw() {
 }
 
 void Input::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, &text);
+    Component::Save(s);
     outConns[0].Save(s);
 }
 
@@ -335,9 +460,7 @@ void InputBlock::Draw() {
 }
 
 void InputBlock::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, &text);
+    Component::Save(s);
 
     size_t size = outConns.size();
     Write(s, &size);
@@ -366,9 +489,7 @@ void Output::Draw() {
 }
 
 void Output::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, &text);
+    Component::Save(s);
 
     size_t size = inConns.size();
     Write(s, &size);
@@ -415,9 +536,7 @@ void OutputBlock::Draw() {
 }
 
 void OutputBlock::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, &text);
+    Component::Save(s);
 
     size_t size = inConns.size();
     Write(s, &size);
@@ -426,20 +545,7 @@ void OutputBlock::Save(std::ofstream& s) {
 
     Write(s, &isIcon);
 }
-/*
-void BlockConnector::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, text.c_str(), text.size());
 
-    size_t size = inputs.size();
-    Write(s, &size);
-    for (auto& input : inputs)
-        Write(s, &input);
-
-    Write(s, &outConn);
-}
-*/
 Block::Block(float x, float y, const char *text, Color color, std::vector<Component *> comps,
       std::vector<Line *> connections)
     : Component(x, y, WIDTH, HEIGHT, text, Component::Type::BLOCK), color(color) {
@@ -512,40 +618,26 @@ Block::Block(const Block *block)
 }
 
 Block::Block(std::ifstream& s, Component::Type type) : Component(s, type) {
+    ReadComponents(s, comps);
+
     size_t size;
     Read(s, &size);
-    for (int i = 0; i < size; i++)
-        ;
-
-    Read(s, &size);
     for (int i = 0; i < size; i++) {
-        CompIdx idxStart;
-        Read(s, &idxStart);
-        CompIdx idxEnd;
-        Read(s, &idxEnd);
-
-        Connector* start = nullptr;
-        Connector* end = nullptr;
-        if (idxStart.type == Connector::Type::OUT) {
-            // FIXME: WIP
-            start = &comps[idxStart.compIdx]->outConns[0];
-        } else {
-            start = &comps[idxStart.compIdx]->inConns[idxStart.connIdx];
-        }
-        if (idxEnd.type == Connector::Type::OUT) {
-            // FIXME: WIP
-            end = &comps[idxEnd.compIdx]->outConns[0];
-        } else {
-            end = &comps[idxEnd.compIdx]->inConns[idxEnd.connIdx];
-        }
+        Connector* start = Read(s, connections, comps);
+        Connector* end = Read(s, connections, comps);
         connections.push_back(new Line(start, end));
     }
 
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        inConns.push_back(Connector(s, this));
+
+    Read(s, &size);
+    for (int i = 0; i < size; i++)
+        outConns.push_back(Connector(s, this));
 
     Read(s, &color);
     Read(s, &isIcon);
-    Read(s, &numInputs);
-    Read(s, &numOutputs);
 }
 
 void Block::Calc(std::vector<Connector*>& _outConns) {
@@ -580,10 +672,10 @@ void Block::Move(const Vector2 &delta) {
 void Block::Draw() {
     if (isIcon) {
         DrawRectangleRounded({rect.x, rect.y, rect.width, rect.height}, 0.3, 5, color);
-        DrawTextEx(font, TextFormat("%s", text.c_str()), { rect.x + 3, rect.y + 5 }, 18, 1, RAYWHITE);
+        DrawTextEx(font, TextFormat("%.4s", text.c_str()), { rect.x + 3, rect.y + 5 }, 18, 1, RAYWHITE);
     } else {
         DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 2 * 10, rect.height}, 0.3, 5, color);
-        DrawTextEx(font, TextFormat("%s", text.c_str()), { rect.x + 12, rect.y + 5 }, 18, 1, RAYWHITE);
+        DrawTextEx(font, TextFormat("%.4s", text.c_str()), { rect.x + 12, rect.y + 5 }, 18, 1, RAYWHITE);
 
         Vector2 pos = GetMousePosition();
         for (auto& in : inConns) {
@@ -622,38 +714,36 @@ Connector* Block::CheckEndpoints(const Vector2 &pos) {
 }
 
 void Block::Save(std::ofstream& s) {
-    Write(s, &type);
-    Write(s, &rect);
-    Write(s, &text);
+    Component::Save(s);
 
     size_t size = comps.size();
     Write(s, &size);
+    printf("Block comps:%zd\n", size);
     for (auto& comp: comps)
         comp->Save(s);
 
     size = connections.size();
     Write(s, &size);
+    printf("Block connections:%zd\n", size);
     for (auto& connection : connections) {
-        CompIdx idxStart = GetComponentIdx(connections, comps, connection->start);
-        Write(s, &idxStart);
-        CompIdx idxEnd = GetComponentIdx(connections, comps, connection->end);
-        Write(s, &idxEnd);
+        Write(s, connection->start, connections, comps);
+        Write(s, connection->end, connections, comps);
     }
 
     size = inConns.size();
     Write(s, &size);
+    printf("Block inConns:%zd\n", size);
     for (auto& input : inConns)
         input.Save(s);
 
     size = outConns.size();
     Write(s, &size);
+    printf("Block outConns:%zd\n", size);
     for (auto& output : outConns)
         output.Save(s);
 
     Write(s, &color);
     Write(s, &isIcon);
-    Write(s, &numInputs);
-    Write(s, &numOutputs);
 }
 
 Block::~Block() {
@@ -693,10 +783,10 @@ void MenuPanel::Draw() {
     }
 }
 
-void MenuPanel::Save(std::ofstream& s) {
-    for (auto& button : buttons)
-        Write(s, &button);
-}
+// void MenuPanel::Save(std::ofstream& s) {
+//     for (auto& button : buttons)
+//         Write(s, &button);
+// }
 
 void MainMenu::Update() {
     short int i = -1;
@@ -718,10 +808,10 @@ void MainMenu::Draw() {
     }
 }
 
-void MainMenu::Save(std::ofstream& s) {
-    for (auto& button : buttons)
-        Write(s, &button);
-}
+// void MainMenu::Save(std::ofstream& s) {
+//     for (auto& button : buttons)
+//         Write(s, &button);
+// }
 
 void Dialog::Draw() {
     if (type == Type::NONE) return;
@@ -774,6 +864,7 @@ void Dialog::Draw() {
                     parent->name += "\\";
                     parent->name += fileDialogState.fileNameText;
                     parent->LoadProject();
+                    parent->state = Symulator::State::ACTIVE;
                 }
                 fileDialogState.SelectFilePressed = false;
             }
@@ -840,10 +931,6 @@ void Symulator::CreateComponentMenu() {
     float x = 20;
     compMenu.push_back(new Gate(x, 5, "AND", Gate::Type::AND));
     x += Gate::WIDTH + 20;
-    compMenu.push_back(new Gate(x, 5, "OR", Gate::Type::OR));
-    x += Gate::WIDTH + 20;
-    compMenu.push_back(new Gate(x, 5, "XOR", Gate::Type::XOR));
-    x += Gate::WIDTH + 20;
     compMenu.push_back(new Gate(x, 5, "NOT", Gate::Type::NOT, true));
     x += Gate::WIDTH + 20;
     compMenu.push_back(new Input(x, 5, "I1"));
@@ -863,6 +950,9 @@ void Symulator::CreateComponentMenu() {
     compMenu.push_back(new OutputBlock(x, 5, Component::Type::OUTPUT8, "O8"));
 
     compMenuNextX = x + Output::WIDTH + 20;
+    numStdMenuElems = compMenu.size();
+
+    printf("!!!%d\n", compMenuNextX);
 }
 
 void Symulator::CreateBlock(const char* name, Color color) {
@@ -897,6 +987,8 @@ void Symulator::DrawComponentMenu() {
 }
 
 void Symulator::MoveComponentMenu(float delta) {
+    menuDelta += delta;
+
     float minX = 20;
     float maxX = GetScreenWidth();
     if (delta < 0) {
@@ -1079,122 +1171,98 @@ bool Symulator::ComponentCollide(Component* comp) {
 }
 
 void Symulator::ReadProjectData(std::ifstream& s) {
+    Read(s, &compMenuNextX);
     size_t size;
     Read(s, &size);
-    for (int i = 8; i < size; i++) {
+    //printf("Blocks:%zd\n", size);
+    for (size_t i = 0; i < size; i++) {
         Component::Type type;
         Read(s, &type);
         if (type == Component::Type::BLOCK) {
-            //compMenu.push_back(new Block(s));
-        } else
-            printf("Warning! Incorrect componet type: %d", type);
-    }
-
-    Read(s, &size);
-    comps.reserve(size);
-    for (int i = 0; i < size; i++) {
-        Component::Type type;
-        Read(s, &type);
-        switch (type) {
-        case Component::Type::INPUT1:
-            comps.push_back(new Input(s, type));
-            break;
-        case Component::Type::OUTPUT1:
-            comps.push_back(new Output(s, type));
-            break;
-        case Component::Type::OUTPUT8:
-            comps.push_back(new OutputBlock(s, type));
-            break;
-        case Component::Type::GATE:
-            comps.push_back(new Gate(s, type));
-            break;
-        case Component::Type::INPUT2:
-        case Component::Type::INPUT4:
-        case Component::Type::INPUT8:
-            comps.push_back(new InputBlock(s, type));
-            break;
-        case Component::Type::BLOCK:
-            //comps.push_back(new Block(s));
-            break;
-        default:
-            break;
+            compMenu.push_back(new Block(s, type));
+        } else {
+            printf("Warning! Incorrect componet type: %d\n", type);
         }
     }
+
+    ReadComponents(s, comps);
+
     Read(s, &size);
+    //printf("Connections:%zd\n", size);
     connections.reserve(size);
     for (int i = 0; i < size; i++) {
-        CompIdx idxStart;
-        Read(s, &idxStart);
-        CompIdx idxEnd;
-        Read(s, &idxEnd);
+        Connector *start = Read(s, connections, comps);
+        Connector *end = Read(s, connections, comps);
 
-        Connector* start = nullptr;
-        Connector* end = nullptr;
-        if (idxStart.type == Connector::Type::OUT) {
-            start = &comps[idxStart.compIdx]->outConns[0];
-        } else {
-            start = &comps[idxStart.compIdx]->inConns[idxStart.connIdx];
-        }
-        if (idxEnd.type == Connector::Type::OUT) {
-            end = &comps[idxEnd.compIdx]->outConns[0];
-        } else {
-            end = &comps[idxEnd.compIdx]->inConns[idxEnd.connIdx];
-        }
         connections.push_back(new Line(start, end));
     }
 }
 
 void Symulator::WriteProjectData(std::ofstream& s) {
-    size_t size = compMenu.size();
-    // FIXME: It will change!!!
+    Write(s, &compMenuNextX);
+    size_t size = compMenu.size() - numStdMenuElems /* AND, NOT ... */;
     Write(s, &size);
-    for (size_t i = 8; i < size; i++)
-        compMenu[i]->Save(s);
+    //printf("Blocks:%zd\n", size);
+    for (size_t i = 0; i < size; i++)
+        compMenu[numStdMenuElems + i]->Save(s);
 
     size = comps.size();
     Write(s, &size);
-    for (int i = 0; i < comps.size(); i++)
-        comps[i]->Save(s);
+    //printf("Comps:%zd\n", size);
+    for (auto& comp : comps)
+        comp->Save(s);
 
     size = connections.size();
     Write(s, &size);
+    //printf("Connections:%zd\n", size);
     for (auto& connection : connections) {
-        CompIdx idxStart = GetComponentIdx(connections, comps, connection->start);
-        Write(s, &idxStart);
-        CompIdx idxEnd = GetComponentIdx(connections, comps, connection->end);
-        Write(s, &idxEnd);
+        Write(s, connection->start, connections, comps);
+        Write(s, connection->end, connections, comps);
     }
-
-    Write(s, &compMenuNextX);
-    Write(s, &numBlocks);
 }
 
 void Symulator::LoadProject() {
+    ClearProject();
     std::ifstream loadFile(name, std::ios_base::binary);
     if (loadFile.is_open()) {
         ReadProjectData(loadFile);
 
         loadFile.close();
-        printf("Load complete\n");
+        TraceLog(LOG_INFO, "Load complete: %s\n", name.c_str());
         state = State::ACTIVE;
     }
     else {
-        printf("Unable to open file");
+        TraceLog(LOG_INFO, "Unable to open file: %s\n", name.c_str());
     }
 }
 
 void Symulator::SaveProject() {
+    printf("Menu delta:%f\n", menuDelta);
+    MoveComponentMenu(-menuDelta);
+
     std::ofstream saveFile(name, std::ios_base::binary);
     if (saveFile.is_open()) {
         WriteProjectData(saveFile);
 
         saveFile.close();
 
-        printf("Save file created");
-        return;
+        TraceLog(LOG_INFO, "Save file created: %s\n", name.c_str());
     } else {
-        printf("Unable to open file");
-        return;
+        TraceLog(LOG_INFO, "Unable to open file: %s\n", name.c_str());
+    }
+}
+
+void Symulator::ClearProject() {
+    // Delete blocks
+    for (int i = numStdMenuElems; i < compMenu.size(); i++)
+        delete compMenu[i];
+    for (auto &conn : connections) {
+        delete conn;
+        connections.clear();
+    }
+    for (auto &comp : comps) {
+        delete comp;
+        comps.clear();
     }
 }
 
@@ -1333,7 +1401,6 @@ void Symulator::Update() {
             }
         }
         mainMenu.Update();
-        
     }
     UpdateConnections(comps, connections);
     menu.Update();

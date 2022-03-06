@@ -6,14 +6,17 @@
 #include "raylib.h"
 
 namespace sym {
+
 template <typename T>
 void Write(std::ofstream& os, T* data) {
+    printf("size:%d\n", sizeof(T));
     os.write((const char*)data, sizeof(T));
 }
 void Write(std::ofstream &os, std::string *data);
 
 template <typename T>
 void Read(std::ifstream& is, T* data) {
+    printf("size:%d\n", sizeof(T));
     char buffer[20];
     is.read(buffer, sizeof(T));
     *data = *(T*)buffer;
@@ -41,20 +44,9 @@ public:
         : parent(parent), pos(pos), type(type), conn(conn) {}
     Connector(Vector2 pos, Type type) : parent(nullptr), pos(pos), type(type), conn(nullptr) {}
     Connector() : parent(nullptr), pos({0, 0}), type(Type::IN), conn(nullptr) {}
-    Connector(std::ifstream& s, Component* parent): parent(parent) {
-        Read(s, &type);
-        Read(s, &pos);
-        Read(s, &value);
+    Connector(std::ifstream& s, Component* parent);
 
-        printf("Component::Create type:%d pos:(%f %f)\n", type, pos.x, pos.y);
-    }
-    void Save(std::ofstream& s) {
-        Write(s, &type);
-        Write(s, &pos);
-        Write(s, &value);
-
-        printf("Component::Save type:%d pos:(%f %f)\n", type, pos.x, pos.y);
-    }
+    void Save(std::ofstream &s);
 };
 
 class Component {
@@ -96,7 +88,7 @@ public:
     virtual void Draw();
     virtual void Move(const Vector2 &delta);
     virtual Connector* CheckEndpoints(const Vector2& pos);
-    virtual void Save(std::ofstream&) {}
+    virtual void Save(std::ofstream& s);
     virtual ~Component() {};
 
     Rectangle rect;
@@ -242,19 +234,6 @@ class OutputBlock : public Component {
     bool isIcon = true;
 };
 
-class BlockConnector : public Connector {
-public:
-    BlockConnector(Component *parent, Vector2 pos, Type type, Connector* conn)
-        : Connector(parent, pos, type), conn(conn) {}
-    BlockConnector(std::ifstream& s, Component* parent, Connector* conn) {}
-
-    void Save(std::ofstream& s) {
-        Write(s, &type);
-        Write(s, &pos);
-    }
-    Connector *conn;
-};
-
 class Block : public Component {
 public:
     static constexpr float WIDTH = 40;
@@ -272,9 +251,6 @@ public:
 
     std::vector<Component*> comps;
     std::vector<Line*> connections;
-
-    // std::vector<BlockConnector> inputs;
-    // std::vector<BlockConnector> outputs;
 
     Color color;
     bool isIcon = true;
@@ -450,6 +426,8 @@ public:
     void WriteProjectData(std::ofstream&);
     void LoadProject();
     void SaveProject();
+    void ClearProject();
+
 
     void Update();
     void Draw();
@@ -467,7 +445,8 @@ public:
     MenuPanel menu;
     MainMenu mainMenu;
     float compMenuNextX;
-    int numBlocks = 0;
+    float menuDelta = 0;
+    int numStdMenuElems;
     Dialog blockDialog;
     std::string name;
 };
