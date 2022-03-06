@@ -1385,6 +1385,7 @@ void Symulator::Draw() {
 
 int Symulator::MainLoop()
 {
+    SetTraceLogLevel(LOG_NONE);
     InitWindow(800, 600, "Symulator");
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
