@@ -13,6 +13,10 @@ cd symulator-ukladow-logicznych
 .\build.bat
 ```
 
+### Skompilowana wersja
+
+Jeżeli nie chcemy kompilować kodu może pobrać skompilowaną i skompresowaną  wersję projektu z [releases](https://github.com/Inf512-MotorolaScienceCup/symulator-ukladow-logicznych/releases) projektu.
+
 ### Dokumentacja 
 
 Dokumentacje symulatora można znaleźć w [wiki](https://github.com/Inf512-MotorolaScienceCup/symulator-ukladow-logicznych/wiki) projektu.
