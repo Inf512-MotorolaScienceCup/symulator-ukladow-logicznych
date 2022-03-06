@@ -876,14 +876,14 @@ void Symulator::DrawPanel() {
 }
 
 void Symulator::DrawComponents() {
-    for (auto &comp : comps) {
+    for (auto &comp : block->comps) {
         comp->Draw();
     }
 }
 
 void Symulator::DrawConnections() {
     int i = 1;
-    for (auto &con : connections) {
+    for (auto &con : block->connections) {
         float y1 = con->start->pos.y;
         float y2 = con->end->pos.y;
         float w1 = (con->end->pos.x - con->start->pos.x) * i++ / 10;
@@ -920,10 +920,10 @@ void Symulator::CreateComponentMenu() {
 }
 
 void Symulator::CreateBlock(const char* name, Color color) {
-    compMenu.push_back(new Block(compMenuNextX, 5, name, color, comps, connections));
+    compMenu.push_back(new Block(compMenuNextX, 5, name, color, block->comps, block->connections));
     compMenuNextX += Block::WIDTH + 20;
-    comps.clear();
-    connections.clear();
+    block->comps.clear();
+    block->connections.clear();
 }
 
 void Symulator::Log(const char* text) {
@@ -974,10 +974,11 @@ void Symulator::MoveComponentMenu(float delta) {
 void Symulator::DeleteConnection(Connector* conn) {
     std::vector<Connector *> nextList;
     std::list<int> idxToDelete;
-    for (int i = 0; i < connections.size(); i++) {
-        if (connections[i]->start == conn || connections[i]->end == conn) {
+    for (int i = 0; i < block->connections.size(); i++) {
+        if (block->connections[i]->start == conn || block->connections[i]->end == conn) {
+            printf("Connection Delete %d\n", i);
             if (conn->type == Connector::Type::OUT && nextList.size() == 0) {
-                nextList = GetNextConnector(connections, conn);
+                nextList = GetNextConnector(block->connections, conn);
             }
 
             idxToDelete.push_front(i);
@@ -985,13 +986,13 @@ void Symulator::DeleteConnection(Connector* conn) {
     }
 
     for (auto i : idxToDelete) {
-        delete connections[i];
-        connections.erase(connections.begin() + i);
+        delete block->connections[i];
+        block->connections.erase(block->connections.begin() + i);
     }
 
     for (auto next : nextList) {
         next->value = false;
-        UpdateConnections(connections, next);
+        UpdateConnections(block->connections, next);
     }
 }
 
@@ -1005,7 +1006,7 @@ void Symulator::DeleteComponent(Component* comp) {
         DeleteConnection(&in);
     for (auto& out : comp->outConns)
         DeleteConnection(&out);
-    comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
+    block->comps.erase(std::remove(block->comps.begin(), block->comps.end(), comp), block->comps.end());
 }
 
 void Symulator::DeleteBlock(Block* comp) {
@@ -1013,18 +1014,18 @@ void Symulator::DeleteBlock(Block* comp) {
         DeleteConnection(&in);
     for (auto &out : comp->outConns)
         DeleteConnection(&out);
-    comps.erase(std::remove(comps.begin(), comps.end(), comp), comps.end());
+    block->comps.erase(std::remove(block->comps.begin(), block->comps.end(), comp), block->comps.end());
 }
 
 void Symulator::DeleteAll() {
-    for (auto &line : connections) {
+    for (auto &line : block->connections) {
         delete line;
     }
-    connections.clear();
-    for (auto &comp : comps) {
+    block->connections.clear();
+    for (auto &comp : block->comps) {
         delete comp;
     }
-    comps.clear();
+    block->comps.clear();
 }
 
 Component* Symulator::CheckComponentMenu(const Vector2& pos) {
@@ -1042,7 +1043,7 @@ Component* Symulator::CheckComponentMenu(const Vector2& pos) {
 
 Component* Symulator::CheckComponents(const Vector2& pos) {
     if (state != State::GATE_MOVING) {
-        for (auto &comp : comps) {
+        for (auto &comp : block->comps) {
             if (pos.x >= comp->rect.x && pos.x < comp->rect.x + comp->rect.width &&
                 pos.y >= comp->rect.y && pos.y < comp->rect.y + comp->rect.height) {
 
@@ -1054,7 +1055,7 @@ Component* Symulator::CheckComponents(const Vector2& pos) {
 }
 
 Component* Symulator::CheckInputs(const Vector2& pos) {
-    for (auto& comp : comps) {
+    for (auto& comp : block->comps) {
         if (IsInputComponent(comp) && CheckCollisionPointRec(pos, comp->rect))
             return comp;
     }
@@ -1062,7 +1063,7 @@ Component* Symulator::CheckInputs(const Vector2& pos) {
 }
 
 Component* Symulator::CheckOutputs(const Vector2& pos) {
-    for (auto& comp : comps) {
+    for (auto& comp : block->comps) {
         if (IsOutputComponent(comp) && CheckCollisionPointRec(pos, comp->rect))
             return comp;
     }
@@ -1070,7 +1071,7 @@ Component* Symulator::CheckOutputs(const Vector2& pos) {
 }
 
 Connector *Symulator::CheckInputConnectors(const Vector2 &pos) {
-    for (auto &comp : comps) {
+    for (auto &comp : block->comps) {
         if (IsInputComponent(comp)) {
             for (auto& out : comp->outConns) {
                 if (CheckCollisionPointRec(pos, {out.pos.x - 5, out.pos.y - 5, 10, 10}))
@@ -1096,7 +1097,7 @@ Connector* Symulator::CheckComponentEndpoints(Component* comp, const Vector2 &po
 }
 
 Connector* Symulator::CheckComponentEndpoints(const Vector2 &pos) {
-    for (auto &comp : comps) {
+    for (auto &comp : block->comps) {
         Connector *endPos = comp->CheckEndpoints(pos);
         if (endPos) return endPos;
     }
@@ -1131,7 +1132,7 @@ bool Symulator::ComponentCollide(Component* comp) {
     if (CheckCollisionRecs(comp->rect, {40, (float)GetScreenHeight() - 40, (float)GetScreenWidth() - 2 * 40, 40}))
         return true;
 
-    for (auto& g : comps) {
+    for (auto& g : block->comps) {
         if (g != comp) {
             if (CheckCollisionRecs(g->rect, comp->rect))
                 return true;
@@ -1152,15 +1153,16 @@ void Symulator::ReadProjectData(std::ifstream& s) {
         }
     }
 
-    ReadComponents(s, comps);
+    ReadComponents(s, block->comps);
 
     Read(s, &size);
-    connections.reserve(size);
+    //printf("Connections:%zd\n", size);
+    block->connections.reserve(size);
     for (int i = 0; i < size; i++) {
-        Connector *start = Read(s, connections, comps);
-        Connector *end = Read(s, connections, comps);
+        Connector *start = Read(s, block->connections, block->comps);
+        Connector *end = Read(s, block->connections, block->comps);
 
-        connections.push_back(new Line(start, end));
+        block->connections.push_back(new Line(start, end));
     }
 }
 
@@ -1171,16 +1173,18 @@ void Symulator::WriteProjectData(std::ofstream& s) {
     for (size_t i = 0; i < size; i++)
         compMenu[numStdMenuElems + i]->Save(s);
 
-    size = comps.size();
+    size = block->comps.size();
     Write(s, &size);
-    for (auto& comp : comps)
+    //printf("Comps:%zd\n", size);
+    for (auto& comp : block->comps)
         comp->Save(s);
 
-    size = connections.size();
+    size = block->connections.size();
     Write(s, &size);
-    for (auto& connection : connections) {
-        Write(s, connection->start, connections, comps);
-        Write(s, connection->end, connections, comps);
+    //printf("Connections:%zd\n", size);
+    for (auto& connection : block->connections) {
+        Write(s, connection->start, block->connections, block->comps);
+        Write(s, connection->end, block->connections, block->comps);
     }
 }
 
@@ -1216,12 +1220,12 @@ void Symulator::ClearProject() {
         compMenu.pop_back();
     }
 
-    for (auto &conn : connections)
+    for (auto &conn : block->connections)
         delete conn;
-    connections.clear();
-    for (auto &comp : comps)
+    block->connections.clear();
+    for (auto &comp : block->comps)
         delete comp;
-    comps.clear();
+    block->comps.clear();
 }
 
 void Symulator::Update() {
@@ -1235,6 +1239,14 @@ void Symulator::Update() {
             MoveComponentMenu(-5.0);
         }
 
+        if (IsKeyDown(KEY_LEFT_SHIFT)) {
+            Component *comp = CheckComponentMenu(pos);
+            if (comp && comp->type == Component::Type::BLOCK) {
+                block = static_cast<Block*>(comp);
+            }
+        } else {
+            block = &mainBlock;
+        }
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             if (IsKeyDown(KEY_LEFT_CONTROL)) {
                 Connector *conn = CheckComponentEndpoints(pos);
@@ -1295,7 +1307,7 @@ void Symulator::Update() {
             Component *comp = CheckComponentMenu(pos);
             if (comp) {
                 movingComp = Component::Clone(comp);
-                comps.push_back(movingComp);
+                block->comps.push_back(movingComp);
                 state = State::GATE_MOVING;
             } else if ((comp = CheckComponents(pos)) != nullptr) {
                 lineStart = comp->CheckEndpoints(pos);
@@ -1319,7 +1331,7 @@ void Symulator::Update() {
                     movingComp->Move(delta);
                     movingComp->collide = false;
                 } else {
-                    comps.erase(std::remove(comps.begin(), comps.end(), movingComp), comps.end());
+                    block->comps.erase(std::remove(block->comps.begin(), block->comps.end(), movingComp), block->comps.end());
                     delete movingComp;
                 }
             }
@@ -1335,7 +1347,7 @@ void Symulator::Update() {
         } else {
             Connector* conn = CheckComponentEndpoints(pos);
             if (conn) {
-                AddConnection(connections, lineStart, conn);
+                AddConnection(block->connections, lineStart, conn);
             }
             state = State::ACTIVE;
         }
@@ -1356,7 +1368,7 @@ void Symulator::Update() {
         }
         mainMenu.Update();
     }
-    UpdateConnections(comps, connections);
+    UpdateConnections(block->comps, block->connections);
     menu.Update();
 }
 

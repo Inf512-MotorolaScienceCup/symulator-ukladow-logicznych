@@ -241,6 +241,7 @@ public:
     static constexpr float WIDTH = 40;
     static constexpr float HEIGHT = 30;
 
+    Block() {};
     Block(float x, float y, const char *text, Color color, std::vector<Component*> comps, std::vector<Line*> connections);
     Block(const Block *block);
     Block(std::ifstream& s, Component::Type type);
@@ -393,7 +394,9 @@ public:
         MENU
     };
 
-    Symulator(): blockDialog(this) {}
+    Symulator(): blockDialog(this) {
+        block = &mainBlock;
+    }
     ~Symulator();
 
     static void Log(const char *text);
@@ -438,8 +441,9 @@ public:
     State state = State::MENU;
 
     std::vector<Component*> compMenu;
-    std::vector<Component*> comps;
-    std::vector<Line*> connections;
+    std::vector<Block> blocks;
+    Block mainBlock;
+    Block *block;
 
     Component* movingComp;
     Connector* lineStart;
