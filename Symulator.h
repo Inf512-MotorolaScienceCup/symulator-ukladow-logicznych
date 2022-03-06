@@ -181,6 +181,7 @@ public:
     virtual void Save(std::ofstream& s) override;
 
     bool isIcon = true;
+    bool isSigned = false;
 };
 
 class Output : public Component {
@@ -232,6 +233,7 @@ class OutputBlock : public Component {
     virtual void Draw() override;
     virtual void Save(std::ofstream&) override;
     bool isIcon = true;
+    bool isSigned = false;
 };
 
 class Block : public Component {
@@ -256,6 +258,7 @@ public:
     bool isIcon = true;
     int numInputs;
     int numOutputs;
+    int refCounter;
 };
 
 class Line {
@@ -275,7 +278,7 @@ public:
     */
 };
 
-enum class MenuOption { CREATE, SAVE, CLEAR, OPTIONS, NEW, LOAD };
+enum class MenuOption { CREATE, SAVE, CLEAR, CLOSE, NEW, LOAD };
 
 class MenuButton {
 public:
@@ -294,8 +297,8 @@ public:
         case MenuOption::CLEAR:
             text = "Clear";
             break;
-        case MenuOption::OPTIONS:
-            text = "Options";
+        case MenuOption::CLOSE:
+            text = "Close";
             break;
         case MenuOption::NEW:
             text = "New project";
@@ -323,14 +326,13 @@ public:
     }
     void Update();
     void Draw();
-    void Save(std::ofstream&);
 
     std::vector<MenuButton> buttons;
     std::vector<MenuOption> menuOptions = {
         MenuOption::CREATE,
         MenuOption::SAVE,
         MenuOption::CLEAR,
-        MenuOption::OPTIONS
+        MenuOption::CLOSE
     };
     MenuButton* selected = nullptr;
     float yOffset = 10;
@@ -352,7 +354,6 @@ public:
     }
     void Update();
     void Draw();
-    void Save(std::ofstream&);
 
     std::vector<MenuButton> buttons;
     std::vector<MenuOption> menuOptions = {
@@ -403,6 +404,7 @@ public:
     Component* CheckComponentMenu(const Vector2& pos);
     Component* CheckComponents(const Vector2& pos);
     Component* CheckInputs(const Vector2 &pos);
+    Component* CheckOutputs(const Vector2& pos);
     Connector* CheckInputConnectors(const Vector2 &pos);
     Connector* CheckComponentEndpoints(Component* comp, const Vector2 &pos);
     Connector* CheckComponentEndpoints(const Vector2 &pos);

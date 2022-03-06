@@ -33,12 +33,10 @@ CompIdx GetComponentIdx(std::vector<Line*>& connections, std::vector<Component*>
                 return { i, Connector::Type::IN, j };
         }
     }
-    TraceLog(LOG_INFO, "Error: Component index not found\n");
     return { -1, Connector::Type::IN, -1 };
 }
 
 void Write(std::ofstream &os, std::string *data) {
-    //printf("[Write] %s\n", data->c_str());
     size_t size = data->size();
     os.write((const char *)&size, sizeof(size_t));
     os.write(data->c_str(), data->size());
@@ -48,21 +46,6 @@ void Write(std::ofstream &s, Connector *conn, std::vector<Line *> &connections,
            std::vector<Component *> &comps) {
     CompIdx idx = GetComponentIdx(connections, comps, conn);
     Write(s, &idx);
-
-    printf("(%d %d) (%d)\n", idx.compIdx, idx.connIdx, idx.type);
-
-    if (conn->conn) printf("Bypass !!!\n");
-
- /*
-    int isBypass = conn->conn != nullptr;
-    Write(s, &isBypass);
-
-    if (isBypass) {
-        printf("Bypass !!!\n");
-        CompIdx idx = GetComponentIdx(connections, comps, conn);
-        Write(s, &idx);
-    }
-*/
 }
 
 void Read(std::ifstream &is, std::string *data) {
@@ -71,7 +54,6 @@ void Read(std::ifstream &is, std::string *data) {
     char buffer[255] = {};
     is.read(buffer, size);
     data->append(buffer);
-    //printf("[Read] %s\n", data->c_str());
 }
 
 Connector* Read(std::ifstream &s, std::vector<Line *> &connections, std::vector<Component *> &comps) {
@@ -84,25 +66,12 @@ Connector* Read(std::ifstream &s, std::vector<Line *> &connections, std::vector<
     } else {
         result = &comps[idx.compIdx]->inConns[idx.connIdx];
     }
-
-    printf("(%d %d) (%d)\n", idx.compIdx, idx.connIdx, idx.type);
-/*
-    int isBypass;
-    Read(s, &isBypass);
-
-    if (isBypass) {
-        printf("Bypass !!!\n");
-        Read(s, &idx);
-        result->conn = &comps[idx.compIdx]->outConns[idx.connIdx];
-    }
-*/
     return result;
 }
 
 void ReadComponents(std::ifstream& s, std::vector<Component*>& comps) {
     size_t size;
     Read(s, &size);
-    printf("Comps:%zd\n", size);
     comps.reserve(size);
     for (int i = 0; i < size; i++) {
         Component::Type type;
@@ -168,14 +137,12 @@ std::vector<Connector*> GetNextConnector(std::vector<Line*>& connections, Connec
 void AddConnection(std::vector<Line *> &connections, Connector *conn1, Connector *conn2) {
     if (conn1 == conn2) return;
     if (conn1->type == conn2->type) {
-        printf("Error: Connectors with the same type:%d\n", conn2->type);
         return;
     }
     Connector* in = conn1->type == Connector::Type::IN ? conn1 : conn2;
     // Check if out connection is already connected
     for (auto& conn : connections) {
         if (in == conn->end) {
-            printf("Error: IN Connector already connected\n");
             return;
         }
     }
@@ -226,12 +193,10 @@ Connector::Connector(std::ifstream &s, Component *parent) : parent(parent) {
         // Only blocks can have bypass connector
         Block* block = static_cast<Block*>(parent);
         conn = Read(s, block->connections, block->comps);
-        printf("Bypass handled\n");
     }
     else {
         conn = nullptr;
     }
-    printf("Connector::Create type:%d pos:(%f %f)\n", type, pos.x, pos.y);
 }
 
 void Connector::Save(std::ofstream &s) {
@@ -245,10 +210,8 @@ void Connector::Save(std::ofstream &s) {
         // Only blocks can have bypass connector
         Block* block = static_cast<Block*>(parent);
         CompIdx idx = GetComponentIdx(block->connections, block->comps, conn);
-        printf("Bypass handled\n");
         Write(s, &idx);
     }
-    printf("Connector::Save type:%d pos:(%f %f)\n", type, pos.x, pos.y);
 }
 
 Component* Component::Clone(Component* comp) {
@@ -274,7 +237,7 @@ Component* Component::Clone(Component* comp) {
     case Component::Type::BLOCK:
         return new Block(static_cast<Block*>(comp));
     default:
-        printf("Component::Clone unknown component type:%d\n", comp->type);
+        break;
     }
     return nullptr;
 }
@@ -347,17 +310,10 @@ Gate::Gate(std::ifstream& s, Component::Type type): Component(s, type) {
 void Gate::Calc(std::vector<Connector*>& _outConns) {
     switch (gateType) {
     case Type::NOT:
-        // FIXME: Not sure about this
         outConns[0].value = !inConns[0].value;
         break;
     case Type::AND:
         outConns[0].value = inConns[0].value & inConns[1].value;
-        break;
-    case Type::OR:
-        outConns[0].value = inConns[0].value | inConns[1].value;
-        break;
-    case Type::XOR:
-        outConns[0].value = inConns[0].value ^ inConns[1].value;
         break;
     }
     return _outConns.push_back(&outConns[0]);
@@ -427,6 +383,7 @@ InputBlock::InputBlock(std::ifstream& s, Component::Type type) : Component(s, ty
         outConns.emplace_back(s, this);
 
     Read(s, &isIcon);
+    Read(s, &isSigned);
 }
 
 void InputBlock::Draw() {
@@ -443,17 +400,26 @@ void InputBlock::Draw() {
 
         Vector2 pos = GetMousePosition();
 
-        for (auto &out : outConns) {
-            Color connColor = out.value ? RED : GRAY;
-            DrawCircle(out.pos.x, out.pos.y, 5, connColor);
+        for (int i = outConns.size() - 1; i >= 0; i--) {
+            Color connColor = outConns[i].value ? RED : GRAY;
+            DrawCircle(outConns[i].pos.x, outConns[i].pos.y, 5, connColor);
 
-            value += out.value * mod;
+            value += outConns[i].value * mod;
             mod *= 2;
+        }
+        if (isSigned && outConns[0].value) {
+            value -= 128;
+            value *= -1;
         }
         float saturation = value; // 0.5 (1) - 1.0 (255)
         Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
         DrawRectangleRounded({rect.x, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
-        DrawTextEx(font, TextFormat("%d", value), { rect.x + 15, rect.y + 5 }, 16, 1, RAYWHITE);
+        if (isSigned) {
+            char sign = !outConns[0].value ? '+' : ' ';
+            DrawTextEx(font, TextFormat("%c%d", sign, value), { rect.x, rect.y + 5 }, 16, 1, RAYWHITE);
+        } 
+        else
+            DrawTextEx(font, TextFormat("%d", value), { rect.x + 5, rect.y + 5 }, 16, 1, RAYWHITE);
     }
 
     Component::Draw();
@@ -468,6 +434,7 @@ void InputBlock::Save(std::ofstream& s) {
         outConn.Save(s);
 
     Write(s, &isIcon);
+    Write(s, &isSigned);
 }
 
 Output::Output(std::ifstream& s, Component::Type type) : Component(s, type) {
@@ -504,6 +471,7 @@ OutputBlock::OutputBlock(std::ifstream& s, Component::Type type) : Component(s, 
         inConns.emplace_back(s, this);
 
     Read(s, &isIcon);
+    Read(s, &isSigned);
 }
 
 void OutputBlock::Draw() {
@@ -519,17 +487,26 @@ void OutputBlock::Draw() {
         int mod = 1;
 
         Vector2 pos = GetMousePosition();
-        for (auto &in : inConns) {
-            Color connColor = in.value ? RED : GRAY;
-            DrawCircle(in.pos.x, in.pos.y, 5, connColor);
+        for (int i = inConns.size() - 1; i >= 0; i--) {
+            Color connColor = inConns[i].value ? RED : GRAY;
+            DrawCircle(inConns[i].pos.x, inConns[i].pos.y, 5, connColor);
 
-            value += in.value * mod;
+            value += inConns[i].value * mod;
             mod *= 2;
+        }
+        if (isSigned && inConns[0].value) {
+            value -= 128;
+            value *= -1;
         }
         float saturation = value; // 0.5 (1) - 1.0 (255)
         Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
         DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
-        DrawTextEx(font, TextFormat("%d", value), { rect.x + 20, rect.y + 5 }, 16, 1, RAYWHITE);
+        if (isSigned) {
+            char sign = !inConns[0].value ? '+' : ' ';
+            DrawTextEx(font, TextFormat("%c%d", sign, value), { rect.x + 13, rect.y + 5 }, 16, 1, RAYWHITE);
+        }
+        else
+            DrawTextEx(font, TextFormat("%d", value), { rect.x + 15, rect.y + 5 }, 16, 1, RAYWHITE);
     }
 
     Component::Draw();
@@ -544,11 +521,12 @@ void OutputBlock::Save(std::ofstream& s) {
         inConn.Save(s);
 
     Write(s, &isIcon);
+    Write(s, &isSigned);
 }
 
 Block::Block(float x, float y, const char *text, Color color, std::vector<Component *> comps,
       std::vector<Line *> connections)
-    : Component(x, y, WIDTH, HEIGHT, text, Component::Type::BLOCK), color(color) {
+    : Component(x, y, WIDTH, HEIGHT, text, Component::Type::BLOCK), color(color), refCounter(0) {
 
     for (auto& comp : comps) {
         this->comps.push_back(comp);
@@ -562,6 +540,7 @@ Block::Block(const Block *block)
     : Component(block), color(block->color), isIcon(false) {
     numInputs = 0;
     numOutputs = 0;
+    refCounter += 1;
 
     for (auto &comp : block->comps) {
         switch (comp->type) {
@@ -613,11 +592,9 @@ Block::Block(const Block *block)
     }
 
     rect.height = std::max<float>(HEIGHT, std::max(inConns.size(), outConns.size()) * 15.0 + 10);
-    printf("New height:%f %d %d\n", rect.height, numInputs, numOutputs);
-    printf("inputs:%d outputs:%d \n", inConns.size(), outConns.size());
 }
 
-Block::Block(std::ifstream& s, Component::Type type) : Component(s, type) {
+Block::Block(std::ifstream& s, Component::Type type) : Component(s, type), refCounter(0) {
     ReadComponents(s, comps);
 
     size_t size;
@@ -718,13 +695,11 @@ void Block::Save(std::ofstream& s) {
 
     size_t size = comps.size();
     Write(s, &size);
-    printf("Block comps:%zd\n", size);
     for (auto& comp: comps)
         comp->Save(s);
 
     size = connections.size();
     Write(s, &size);
-    printf("Block connections:%zd\n", size);
     for (auto& connection : connections) {
         Write(s, connection->start, connections, comps);
         Write(s, connection->end, connections, comps);
@@ -732,13 +707,11 @@ void Block::Save(std::ofstream& s) {
 
     size = inConns.size();
     Write(s, &size);
-    printf("Block inConns:%zd\n", size);
     for (auto& input : inConns)
         input.Save(s);
 
     size = outConns.size();
     Write(s, &size);
-    printf("Block outConns:%zd\n", size);
     for (auto& output : outConns)
         output.Save(s);
 
@@ -747,23 +720,16 @@ void Block::Save(std::ofstream& s) {
 }
 
 Block::~Block() {
-    printf("Block dtor num comps:%d\n", comps.size());
-    for (auto &comp : comps) {
-        printf("Block dtor delete comp\n");
-        // FIXME:
-        // delete comp;
-        // comp = nullptr;
+    if (refCounter == 0) {
+        for (auto &comp : comps) {
+            delete comp;
+        }
+        comps.clear();
+        for (auto &line : connections) {
+            delete line;
+        }
+        connections.clear();
     }
-    comps.clear();
-
-    printf("Block dtor num connections:%d\n", connections.size());
-    for (auto &line : connections) {
-        printf("Block dtor delete comp\n");
-        // FIXME:
-        // delete line;
-        // line = nullptr;
-    }
-    connections.clear();
 }
 
 void MenuPanel::Update() {
@@ -951,8 +917,6 @@ void Symulator::CreateComponentMenu() {
 
     compMenuNextX = x + Output::WIDTH + 20;
     numStdMenuElems = compMenu.size();
-
-    printf("!!!%d\n", compMenuNextX);
 }
 
 void Symulator::CreateBlock(const char* name, Color color) {
@@ -1012,7 +976,6 @@ void Symulator::DeleteConnection(Connector* conn) {
     std::list<int> idxToDelete;
     for (int i = 0; i < connections.size(); i++) {
         if (connections[i]->start == conn || connections[i]->end == conn) {
-            printf("Connection Delete %d\n", i);
             if (conn->type == Connector::Type::OUT && nextList.size() == 0) {
                 nextList = GetNextConnector(connections, conn);
             }
@@ -1027,7 +990,6 @@ void Symulator::DeleteConnection(Connector* conn) {
     }
 
     for (auto next : nextList) {
-        printf("next type:%d val:%d\n", next->type, next->value);
         next->value = false;
         UpdateConnections(connections, next);
     }
@@ -1055,14 +1017,14 @@ void Symulator::DeleteBlock(Block* comp) {
 }
 
 void Symulator::DeleteAll() {
-    for (auto &comp : comps) {
-        delete comp;
-    }
-    comps.clear();
     for (auto &line : connections) {
         delete line;
     }
     connections.clear();
+    for (auto &comp : comps) {
+        delete comp;
+    }
+    comps.clear();
 }
 
 Component* Symulator::CheckComponentMenu(const Vector2& pos) {
@@ -1094,6 +1056,14 @@ Component* Symulator::CheckComponents(const Vector2& pos) {
 Component* Symulator::CheckInputs(const Vector2& pos) {
     for (auto& comp : comps) {
         if (IsInputComponent(comp) && CheckCollisionPointRec(pos, comp->rect))
+            return comp;
+    }
+    return nullptr;
+}
+
+Component* Symulator::CheckOutputs(const Vector2& pos) {
+    for (auto& comp : comps) {
+        if (IsOutputComponent(comp) && CheckCollisionPointRec(pos, comp->rect))
             return comp;
     }
     return nullptr;
@@ -1174,21 +1144,17 @@ void Symulator::ReadProjectData(std::ifstream& s) {
     Read(s, &compMenuNextX);
     size_t size;
     Read(s, &size);
-    //printf("Blocks:%zd\n", size);
     for (size_t i = 0; i < size; i++) {
         Component::Type type;
         Read(s, &type);
         if (type == Component::Type::BLOCK) {
             compMenu.push_back(new Block(s, type));
-        } else {
-            printf("Warning! Incorrect componet type: %d\n", type);
         }
     }
 
     ReadComponents(s, comps);
 
     Read(s, &size);
-    //printf("Connections:%zd\n", size);
     connections.reserve(size);
     for (int i = 0; i < size; i++) {
         Connector *start = Read(s, connections, comps);
@@ -1202,19 +1168,16 @@ void Symulator::WriteProjectData(std::ofstream& s) {
     Write(s, &compMenuNextX);
     size_t size = compMenu.size() - numStdMenuElems /* AND, NOT ... */;
     Write(s, &size);
-    //printf("Blocks:%zd\n", size);
     for (size_t i = 0; i < size; i++)
         compMenu[numStdMenuElems + i]->Save(s);
 
     size = comps.size();
     Write(s, &size);
-    //printf("Comps:%zd\n", size);
     for (auto& comp : comps)
         comp->Save(s);
 
     size = connections.size();
     Write(s, &size);
-    //printf("Connections:%zd\n", size);
     for (auto& connection : connections) {
         Write(s, connection->start, connections, comps);
         Write(s, connection->end, connections, comps);
@@ -1228,16 +1191,11 @@ void Symulator::LoadProject() {
         ReadProjectData(loadFile);
 
         loadFile.close();
-        TraceLog(LOG_INFO, "Load complete: %s\n", name.c_str());
         state = State::ACTIVE;
-    }
-    else {
-        TraceLog(LOG_INFO, "Unable to open file: %s\n", name.c_str());
     }
 }
 
 void Symulator::SaveProject() {
-    printf("Menu delta:%f\n", menuDelta);
     MoveComponentMenu(-menuDelta);
 
     std::ofstream saveFile(name, std::ios_base::binary);
@@ -1245,25 +1203,23 @@ void Symulator::SaveProject() {
         WriteProjectData(saveFile);
 
         saveFile.close();
-
-        TraceLog(LOG_INFO, "Save file created: %s\n", name.c_str());
-    } else {
-        TraceLog(LOG_INFO, "Unable to open file: %s\n", name.c_str());
     }
 }
 
 void Symulator::ClearProject() {
     // Delete blocks
-    for (int i = numStdMenuElems; i < compMenu.size(); i++)
-        delete compMenu[i];
-    for (auto &conn : connections) {
+    int steps = compMenu.size() - numStdMenuElems;
+    for (int i = 0; i < steps; i++) {
+        compMenuNextX -= Block::WIDTH + 20;
+        compMenu.pop_back();
+    }
+
+    for (auto &conn : connections)
         delete conn;
-        connections.clear();
-    }
-    for (auto &comp : comps) {
+    connections.clear();
+    for (auto &comp : comps)
         delete comp;
-        comps.clear();
-    }
+    comps.clear();
 }
 
 void Symulator::Update() {
@@ -1295,19 +1251,17 @@ void Symulator::Update() {
             if (menu) {
                 switch (menu->option) {
                 case MenuOption::CREATE:
-                    printf("Create selected\n");
                     blockDialog.Show(Dialog::Type::CREATE_BLOCK);
                     break;
                 case MenuOption::SAVE:
-                    printf("Save selected\n");
                     SaveProject();
                     break;
                 case MenuOption::CLEAR:
-                    printf("Clear selected\n");
                     DeleteAll();
                     break;
-                case MenuOption::OPTIONS:
-                    printf("Options selected\n");
+                case MenuOption::CLOSE:
+                    ClearProject();
+                    state = State::MENU;
                     break;
                 }
             }
@@ -1317,10 +1271,19 @@ void Symulator::Update() {
             Component *in = CheckInputs(pos);
             if (in && in->type == Component::Type::INPUT1) {
                 in->outConns[0].value = !in->outConns[0].value;
-            } else {
+            } else if (in && (in->type != Component::Type::INPUT1)) {
                 Connector *conn = CheckInputConnectors(pos);
-                if (conn)
+                if (conn) {
                     conn->value = !conn->value;
+                } else {
+                    InputBlock* ib = static_cast<InputBlock*>(in);
+                    ib->isSigned = !ib->isSigned;
+                }
+            } else if (Component* out = CheckOutputs(pos)) {
+                if (out->type != Component::Type::OUTPUT1) {
+                    OutputBlock* ob = static_cast<OutputBlock*>(out);
+                    ob->isSigned = !ob->isSigned;
+                }
             }
         }
 
@@ -1332,19 +1295,13 @@ void Symulator::Update() {
                 movingComp = Component::Clone(comp);
                 comps.push_back(movingComp);
                 state = State::GATE_MOVING;
-
-                printf("%s\n", movingComp->text.c_str());
             } else if ((comp = CheckComponents(pos)) != nullptr) {
                 lineStart = comp->CheckEndpoints(pos);
                 if (lineStart) {
                     state = State::LINE_DRAWING;
-
-                    printf("Line start\n");
                 } else {
                     movingComp = comp;
                     state = State::GATE_MOVING;
-
-                    printf("%s\n", movingComp->text.c_str());
                 }
             }
         }
@@ -1368,8 +1325,6 @@ void Symulator::Update() {
             movingComp->prevPos.x = movingComp->rect.x;
             movingComp->prevPos.y = movingComp->rect.y;
             movingComp = nullptr;
-
-            printf("Gate DROPPED\n");
         }
     } else if (state == State::LINE_DRAWING) {
         Vector2 pos = GetMousePosition();
@@ -1381,7 +1336,6 @@ void Symulator::Update() {
                 AddConnection(connections, lineStart, conn);
             }
             state = State::ACTIVE;
-            printf("Line finished\n");
         }
     } else if (state == State::MENU && blockDialog.type == Dialog::Type::NONE) {
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
@@ -1390,11 +1344,9 @@ void Symulator::Update() {
             if (menu) {
                 switch (menu->option) {
                 case MenuOption::NEW:
-                    printf("New selected\n");
                     blockDialog.Show(Dialog::Type::NEW);
                     break;
                 case MenuOption::LOAD:
-                    printf("Load selected\n");
                     blockDialog.Show(Dialog::Type::LOAD);
                     break;
                 }
