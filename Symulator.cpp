@@ -408,11 +408,11 @@ void InputBlock::Draw() {
             mod *= 2;
         }
         if (isSigned && outConns[0].value) {
-            value -= 128;
+            value -= pow(2, outConns.size() - 1);
             value *= -1;
         }
         float saturation = value; // 0.5 (1) - 1.0 (255)
-        Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
+        Color color = value ? ColorFromHSV(360, 0.5 + abs((float)value) / 512, 1) : GRAY;
         DrawRectangleRounded({rect.x, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
         if (isSigned) {
             char sign = !outConns[0].value ? '+' : ' ';
@@ -495,11 +495,11 @@ void OutputBlock::Draw() {
             mod *= 2;
         }
         if (isSigned && inConns[0].value) {
-            value -= 128;
+            value -= pow(2, inConns.size() - 1);
             value *= -1;
         }
         float saturation = value; // 0.5 (1) - 1.0 (255)
-        Color color = value ? ColorFromHSV(360, 0.5 + (float)value / 512, 1) : GRAY;
+        Color color = value ? ColorFromHSV(360, 0.5 + abs((float)value) / 512, 1) : GRAY;
         DrawRectangleRounded({rect.x + 10, rect.y, rect.width - 10, rect.height}, 0.3, 5, color);
         if (isSigned) {
             char sign = !inConns[0].value ? '+' : ' ';
@@ -1389,8 +1389,13 @@ void Symulator::Draw() {
             DrawPanel();
             DrawConnections();
             DrawComponents();
-            DrawTextEx(font, "LMB + Ctrl: Delete", { GetScreenWidth() - 150.0f, GetScreenHeight() - 35.0f }, 15, 1, RAYWHITE);
-            DrawTextEx(font, "RMB: Change value", { GetScreenWidth() - 150.0f, GetScreenHeight() - 20.0f }, 15, 1, RAYWHITE);
+            int width = GetScreenWidth();
+            if (width > 775) {
+                int heigth = GetScreenHeight();
+                DrawTextEx(font, "LMB + Ctrl: Delete", { width - 150.0f, heigth - 35.0f }, 15, 1, RAYWHITE);
+                DrawTextEx(font, "RMB: Change value", { width - 300.0f, heigth - 35.0f }, 15, 1, RAYWHITE);
+                DrawTextEx(font, "Mouse + Shitf: Look into block", { width - 300.0f, heigth - 20.0f }, 15, 1, RAYWHITE);
+            }
         }
     }
 
