@@ -1198,6 +1198,8 @@ void Symulator::LoadProject() {
 void Symulator::SaveProject() {
     MoveComponentMenu(-menuDelta);
 
+    if (!DirectoryExists("projects"))
+        system("mkdir projects");
     std::ofstream saveFile(name, std::ios_base::binary);
     if (saveFile.is_open()) {
         WriteProjectData(saveFile);
